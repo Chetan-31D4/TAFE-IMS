@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="bg-gray-50 py-8">
+  <div class="max-w-3xl mx-auto bg-white rounded-lg shadow-lg p-6" x-data="{ lightbox: false, imgSrc: '' }">
+    
+    <!-- Header -->
+    <header class="flex items-center justify-between mb-6">
+      <h2 class="text-2xl font-semibold text-gray-800">
+        Attachments for Request #{{ req.id }}
+      </h2>
+      <a href="{{ url_for('viewer_history') }}"
+         class="text-indigo-600 hover:text-indigo-800 text-sm flex items-center">
+        ← Back to History
+      </a>
+    </header>
+
+    {% if files %}
+    <!-- Grid of Attachments -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
+      {% for f in files %}
+      <div class="bg-white rounded-lg overflow-hidden shadow hover:shadow-lg transition">
+        <!-- Image / File preview container -->
+        <div class="h-40 bg-gray-100 flex items-center justify-center">
+          <img 
+          src="{{ f.url }}"
+          alt="{{ f.filename }}"
+          class="w-full object-contain h-48 cursor-pointer"
+          @click="imgSrc='{{ url_for('download_r2_object', key=f.stored_path) }}'; lightbox = true"
+        />
+        </div>
+        <!-- Filename & Meta -->
+        <div class="px-4 py-3">
+          <p class="font-medium text-gray-900 truncate">{{ f.filename }}</p>
+          <p class="text-xs text-gray-500 mt-1">
+            by {{ f.uploaded_by }} on {{ f.uploaded_at }}
+          </p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <!-- No Attachments Message -->
+    <div class="py-12 text-center">
+      <p class="text-gray-500 italic">No attachments to display.</p>
+    </div>
+    {% endif %}
+
+    <!-- Lightbox Overlay -->
+    <div
+      class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50"
+      x-show="lightbox"
+      x-transition.opacity
+      @click.self="lightbox = false"
+    >
+      <img
+        :src="imgSrc"
+        class="max-w-full max-h-full rounded-lg shadow-lg"
+      />
+      <button
+        class="absolute top-4 right-4 text-white text-3xl"
+        @click="lightbox = false"
+      >&times;</button>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

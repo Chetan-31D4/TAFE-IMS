@@ -1,0 +1,345 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mx-auto px-4 py-6">
+
+  <!-- ─── ROW 1: Quick-link Cards ─────────────────────────────────────────── -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-4 mb-6">
+    <!-- Request History -->
+    <a href="{{ url_for('viewer_history') }}"
+       class="flex flex-col items-center p-3 bg-white rounded-lg shadow hover:shadow-md transition">
+      <div class="p-2 bg-gray-100 rounded-full mb-1">📝</div>
+      <span class="text-xs font-medium text-gray-700 text-center">
+        {% if role=='viewer' %}My Requests{% else %}All Requests{% endif %}
+      </span>
+    </a>
+    <!-- Jobs -->
+    <a href="{{ url_for('jobs') }}"
+       class="flex flex-col items-center p-3 bg-white rounded-lg shadow hover:shadow-md transition">
+      <div class="p-2 bg-indigo-100 rounded-full mb-1">📋</div>
+      <span class="text-xs font-medium text-indigo-700 text-center">
+        Jobs<br>
+        <span class="text-[10px] text-gray-500">
+          {% if role=='admin' %}Pending: {{ pending_jobs }}{% else %}Open: {{ pending_jobs }}{% endif %}
+        </span>
+      </span>
+    </a>
+    {% if role=='viewer' %}
+    <!-- View Cart -->
+    <a href="{{ url_for('view_cart') }}"
+       class="flex flex-col items-center p-3 bg-yellow-100 rounded-lg shadow hover:shadow-md transition">
+      <div class="p-2 bg-yellow-200 rounded-full mb-1">🛒</div>
+      <span class="text-xs font-medium text-yellow-800 text-center">View Cart</span>
+    </a>
+    <!-- Contact Us -->
+    <a href="{{ url_for('contact_us') }}"
+       class="flex flex-col items-center p-3 bg-green-100 rounded-lg shadow hover:shadow-md transition">
+      <div class="p-2 bg-green-200 rounded-full mb-1">📞</div>
+      <span class="text-xs font-medium text-green-800 text-center">Contact Us</span>
+    </a>
+    {% endif %}
+    {% if role=='admin' %}
+    <!-- Stock History -->
+    <a href="{{ url_for('stock_history') }}"
+       class="flex flex-col items-center p-3 bg-blue-100 rounded-lg shadow hover:shadow-md transition">
+      <div class="p-2 bg-blue-200 rounded-full mb-1">📦</div>
+      <span class="text-xs font-medium text-blue-800 text-center">Stock History</span>
+    </a>
+    <!-- Analytics -->
+    <a href="{{ url_for('analytics') }}"
+       class="flex flex-col items-center p-3 bg-purple-100 rounded-lg shadow hover:shadow-md transition">
+      <div class="p-2 bg-purple-200 rounded-full mb-1">📊</div>
+      <span class="text-xs font-medium text-purple-800 text-center">Analytics</span>
+    </a>
+    <!-- Receive Stock -->
+    <a href="{{ url_for('receive_stock') }}"
+       class="flex flex-col items-center p-3 bg-teal-100 rounded-lg shadow hover:shadow-md transition">
+      <div class="p-2 bg-teal-200 rounded-full mb-1">📥</div>
+      <span class="text-xs font-medium text-teal-800 text-center">Receive Stock</span>
+    </a>
+    {% endif %}
+  </div>
+
+  <!-- ─── ROW 2: Search Bar (always right) ─────────────────────────────────── -->
+  <div class="flex justify-end mb-6">
+    <form method="GET" action="{{ url_for('dashboard') }}" class="w-full sm:w-1/3 max-w-md">
+      <div class="relative">
+        <input
+          id="searchInput"
+          name="search"
+          type="text"
+          placeholder="Search products…"
+          value="{{ search }}"
+          class="w-full border border-gray-300 rounded-full py-2 pl-4 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <button type="submit"
+                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700">
+          🔍
+        </button>
+      </div>
+    </form>
+  </div>
+
+    <!-- Admin Only: Add Product Form in a Card -->
+    {% if role == 'admin' %}
+      <div class="bg-white p-6 rounded-lg shadow-sm mb-8 text-center">
+        <form method="POST" action="{{ url_for('add_product') }}" class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+          <!-- Product Name -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
+            <input
+              name="name"
+              placeholder="Product Name"
+              class="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 py-1 text-center"
+              required
+            />
+          </div>
+
+          <!-- Type Select -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Type</label>
+            <select
+              name="type"
+              class="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 py-1 text-center"
+              required
+            >
+              <option disabled selected value="">Select Type</option>
+              <option>Propulsion System</option>
+              <option>Airframe</option>
+              <option>Airframe Accessories</option>
+              <option>Spraying System</option>
+              <option>Electronics Acc</option>
+              <option>Mechanical Acc</option>
+              <option>Communication System</option>
+              <option>Ground Equipment</option>
+              <option>Tools</option>
+              <option>Other</option>
+            </select>
+          </div>
+
+          <!-- Quantity Input -->
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+            <input
+              name="quantity"
+              type="number"
+              placeholder="Quantity"
+              class="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 py-1 text-center"
+              required
+            />
+          </div>
+
+          <!-- Add Product Button -->
+          <div>
+            <button
+              type="submit"
+              class="w-full bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium shadow"
+            >
+              Add Product
+            </button>
+          </div>
+        </form>
+      </div>
+    {% endif %}
+
+    <!-- Products Table -->
+    {% if products %}
+      <div class="overflow-x-auto bg-white rounded-lg shadow-sm text-center">
+        <table class="min-w-full table-auto border-collapse">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-4 py-3 text-xs font-medium text-gray-600 uppercase">ID</th>
+              <th class="px-4 py-3 text-xs font-medium text-gray-600 uppercase">Name</th>
+              <th class="px-4 py-3 text-xs font-medium text-gray-600 uppercase">Type</th>
+              <th class="px-4 py-3 text-xs font-medium text-gray-600 uppercase">Quantity</th>
+              {% if role == 'admin' %}
+              <!-- <th class="px-4 py-3 text-xs font-medium text-gray-600 uppercase">Actions</th>           -->
+              {% endif %}
+
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100">
+            {% for product in products %}
+              <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-sm text-gray-700">{{ product['id'] }}</td>
+
+                {% if role == 'admin' %}
+                  <!-- Admin: Editable Fields -->
+                  <form method="POST" action="{{ url_for('edit_product', id=product['id']) }}" class="contents">
+                    <td class="px-4 py-3">
+                      <input
+                        name="name"
+                        value="{{ product['name'] }}"
+                        class="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 py-1 text-center"
+                        required
+                      />
+                    </td>
+                    <td class="px-4 py-3">
+                      <input
+                        name="type"
+                        value="{{ product['type'] }}"
+                        class="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 py-1 text-center"
+                        required
+                      />
+                    </td>
+                    <td class="px-4 py-3">
+                      <div class="relative">
+                        <input
+                          name="quantity"
+                          type="number"
+                          value="{{ product['quantity'] }}"
+                          class="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 py-1 text-center"
+                          required
+                        />
+                        {% if product['quantity'] < product['reorder_level'] %}
+                          <span
+                            class="absolute top-0 right-0 mt-1 mr-1 inline-block 
+                                  bg-red-100 text-red-800 text-xs font-semibold px-2 py-0.5 rounded-full"
+                          >
+                            Low Stock
+                          </span>
+                        {% endif %}
+                      </div>
+                    </td>
+                    <!-- <td class="px-4 py-3 flex space-x-2 justify-center">
+                      <button
+                        type="submit"
+                        class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-md text-xs text-center"
+                      >
+                        Update
+                      </button>
+                  </form>
+                    </td> -->
+                {% else %}
+                  <!-- Viewer: Read‐Only Display + “Request Item” Form -->
+                  <td class="px-4 py-3 text-sm text-gray-700">{{ product['name'] }}</td>
+                  <td class="px-4 py-3 text-sm text-gray-700">{{ product['type'] }}</td>
+                  <td class="px-4 py-3">
+                    <form method="POST" action="{{ url_for('add_to_cart') }}" class="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                      <!-- Hidden product ID -->
+                      <input type="hidden" name="product_id" value="{{ product['id'] }}" />
+
+                      <!-- Quantity requested -->
+                      <input
+                        name="quantity"
+                        type="number"
+                        min="1"
+                        value="1"
+                        class="border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 px-2 py-1"
+                        required
+                        placeholder="Qty"
+                      />
+
+                      <!-- Reason Select -->
+                      <select
+                        name="reason"
+                        class="border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 px-2 py-1"
+                        required
+                      >
+                        <option disabled selected value="">Why?</option>
+                        <option>Maintenance</option>
+                        <option>Accident</option>
+                      </select>
+
+                      <!-- Sub-Reason Select -->
+                      <select
+                        name="sub_reason"
+                        class="border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 px-2 py-1"
+                        required
+                      >
+                        <option disabled selected value="">Sub Reason</option>
+                        <option>PLM</option>
+                        <option>PDM</option>
+                        <option>FOH</option>
+                      </select>
+
+                      <!-- Drone Number Select -->
+                      <select
+                        name="drone_number"
+                        class="border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm text-gray-800 px-2 py-1"
+                        required
+                      >
+                        <option disabled selected value="">Drone No.</option>
+                        {% for drone in ['D-1','D-2','D-3','D-4', 'D-5','D-6','D-7','D-8', 'D-9','D-10','D-11','D-12','D-13','IFCCO-1','IFCCO-2','IFCCO-3'] %}
+                          <option>{{ drone }}</option>
+                        {% endfor %}
+                      </select>
+
+                      <!-- Request Button -->
+                      <button
+                        type="submit"
+                        class="bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded-md text-sm mt-1 sm:mt-0"
+                      >
+                        Request
+                      </button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% if not products %}
+          <div class="p-8 text-center text-gray-500">
+            No products in inventory yet. Use the form above to add one.
+          </div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="p-8 text-center text-gray-500">
+        No products in inventory. Add one above ⬆️
+      </div>
+    {% endif %}
+
+    <!-- Admin Only: Notification Fetch Script -->
+    {% if role == 'admin' %}
+      <script>
+        async function fetchNotifications() {
+          const res = await fetch('/api/pending_requests');
+          if (!res.ok) return;
+
+          const data = await res.json();
+          const dropdown = document.getElementById('notifDropdown');
+          if (!dropdown) return;
+          dropdown.innerHTML = '';
+
+          if (data.requests.length === 0) {
+            dropdown.innerHTML = '<p class="px-4 py-2 text-sm text-gray-500">No new requests</p>';
+            return;
+          }
+
+          data.requests.forEach(req => {
+            const item = document.createElement('div');
+            item.className = 'px-4 py-3 hover:bg-gray-100 text-sm border-b';
+
+            item.innerHTML = `
+              <div class="font-semibold text-gray-800 mb-1">
+                🆔 #${req.id} — ${req.product_name} (ID: ${req.product_id})
+              </div>
+              <div class="text-xs text-gray-600 mb-1">
+                Quantity: <strong>${req.quantity}</strong> |
+                Reason: <strong>${req.reason}</strong> |
+                Sub-Reason: <strong>${req.sub_reason || '—'}</strong> |
+                Drone: <strong>${req.drone_number}</strong>
+              </div>
+              <div class="text-xs text-gray-500 mb-2">
+                Requested by <strong>${req.requested_by}</strong> at ${req.requested_at}
+              </div>
+              <div class="flex gap-2">
+                <form action="/approve_request/${req.id}" method="POST">
+                  <button class="text-green-600 hover:underline text-xs" type="submit">Approve</button>
+                </form>
+                <form action="/reject_request/${req.id}" method="POST">
+                  <button class="text-red-600 hover:underline text-xs" type="submit">Reject</button>
+                </form>
+              </div>
+            `;
+            dropdown.appendChild(item);
+          });
+        }
+
+        window.onload = fetchNotifications;
+        setInterval(fetchNotifications, 3000);
+      </script>
+    {% endif %}
+  </div>
+{% endblock %}

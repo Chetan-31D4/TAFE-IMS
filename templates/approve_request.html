@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-md mx-auto bg-white p-8 mt-10 rounded-2xl shadow-lg border border-gray-200">
+  <h2 class="text-2xl font-bold mb-6 text-gray-800">✅ Approve Request <span class="text-indigo-600">#{{ req_id }}</span></h2>
+
+  <div class="mb-6 text-gray-700 bg-indigo-50 p-4 rounded-lg">
+    <p class="text-sm">
+      <span class="font-medium">Product:</span> {{ product_name }}<br>
+      <span class="font-medium">Requested Quantity:</span> {{ requested_qty }}
+    </p>
+  </div>
+
+  <form
+    method="POST"
+    action="{{ url_for('approve_request', request_id=req_id) }}"
+    class="space-y-6"
+  >
+    <div>
+      <label for="admin_comment" class="block text-sm font-medium text-gray-700">Admin Comment (optional)</label>
+      <textarea
+        id="admin_comment"
+        name="admin_comment"
+        rows="4"
+        placeholder="Add your comment..."
+        class="mt-1  block w-full border-gray-300 rounded-lg shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+      >{{ current_comment }}</textarea>
+    </div>
+
+    <div class="flex justify-end space-x-4">
+      <a href="{{ url_for('dashboard') }}" class="px-5 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg font-medium transition">
+        Cancel
+      </a>
+      <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium shadow-md transition">
+        Approve & Send Email
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

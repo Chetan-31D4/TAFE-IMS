@@ -1,0 +1,158 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-12">
+
+  <!-- Page Header -->
+  <div class="max-w-6xl mx-auto px-4 mb-8">
+    <div class="bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl p-8 text-white shadow-lg">
+      <h1 class="text-4xl font-extrabold flex items-center space-x-3">
+        <span>📊</span>
+        <span>Usage Analytics</span>
+      </h1>
+      <p class="mt-2 text-lg opacity-90">
+        Monitor your product usage and current stock levels.
+      </p>
+    </div>
+  </div>
+
+  <!-- Filter & Dynamic Stat Badge -->
+  <div class="max-w-6xl mx-auto px-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 mb-8">
+    <!-- Dynamic Stat Badge -->
+    <div class="flex flex-wrap gap-4">
+      <div class="flex items-center space-x-2 bg-white rounded-full px-4 py-2 shadow hover:shadow-md transition">
+        {% if selected == 'All' %}
+          <span class="text-green-600">✅</span>
+          <span class="text-sm font-medium text-gray-700">
+            Today Approved Qty:
+            <strong>
+              {{ usage_trend[-1].level if usage_trend else 0 }}
+            </strong>
+          </span>
+        {% else %}
+          <span class="text-blue-600">📦</span>
+          <span class="text-sm font-medium text-gray-700">
+            Current Qty:
+            <strong>
+              {{ usage_trend[-1].level if usage_trend else 0 }}
+            </strong>
+          </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Filter -->
+    <form method="GET" action="{{ url_for('analytics') }}"
+          class="flex items-center space-x-2 bg-white rounded-full shadow px-4 py-2 hover:shadow-md transition">
+      <span class="text-gray-500">🔍</span>
+      <select name="product" onchange="this.form.submit()"
+              class="bg-transparent focus:outline-none text-gray-700 text-sm">
+        <option value="All" {% if selected=='All' %}selected{% endif %}>All Products</option>
+        {% for p in product_list %}
+          <option value="{{ p }}" {% if p==selected %}selected{% endif %}>{{ p }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+
+  <!-- Charts Grid -->
+  <div class="max-w-6xl mx-auto px-4 grid gap-8 grid-cols-1 lg:grid-cols-2">
+    <!-- Top 10 Bar Chart -->
+    <div class="bg-white rounded-2xl shadow-lg overflow-hidden transform hover:-translate-y-1 transition">
+      <div class="bg-gradient-to-r from-blue-400 to-blue-600 p-4">
+        <h3 class="text-white text-xl font-semibold flex items-center space-x-2">
+          <span>📈</span>
+          <span>Top 10 Most Requested</span>
+        </h3>
+      </div>
+      <div class="p-6 h-80">
+        <canvas id="barChart" class="w-full h-full"></canvas>
+      </div>
+    </div>
+
+    <!-- Daily Approved / Stock Level -->
+    <div class="bg-white rounded-2xl shadow-lg overflow-hidden transform hover:-translate-y-1 transition">
+      <div class="bg-gradient-to-r from-green-400 to-green-600 p-4">
+        <h3 class="text-white text-xl font-semibold flex items-center space-x-2">
+          <span>{% if selected=='All' %}📅{% else %}📦{% endif %}</span>
+          <span>
+            {% if selected=='All' %}Daily Approved Quantity{% else %}{{ selected }} Stock Level{% endif %}
+          </span>
+        </h3>
+      </div>
+      <div class="p-6 h-80">
+        <canvas id="lineChart" class="w-full h-full"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // Bar Chart
+  new Chart(
+    document.getElementById('barChart').getContext('2d'),
+    {
+      type: 'bar',
+      data: {
+        labels: {{ top_requested|map(attribute='product_name')|list|tojson }},
+        datasets: [{
+          data: {{ top_requested|map(attribute='total_requested')|list|tojson }},
+          backgroundColor: 'rgba(59,130,246,0.7)',
+          borderColor:     'rgba(59,130,246,1)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        maintainAspectRatio: false,
+        layout: { padding: 10 },
+        scales: {
+          x: { ticks: { autoSkip: true, maxRotation: 0 } },
+          y: { beginAtZero: true, ticks: { stepSize: 10 } }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { backgroundColor: 'rgba(0,0,0,0.7)' }
+        }
+      }
+    }
+  );
+
+  // Line Chart
+  new Chart(
+    document.getElementById('lineChart').getContext('2d'),
+    {
+      type: 'line',
+      data: {
+        labels: {{ usage_trend|map(attribute='day')|list|tojson }},
+        datasets: [{
+          data:  {{ usage_trend|map(attribute='level')|list|tojson }},
+          fill: true,
+          backgroundColor: 'rgba(16,185,129,0.2)',
+          borderColor: 'rgba(16,185,129,0.8)',
+          tension: 0.4,
+          pointRadius: 3
+        }]
+      },
+      options: {
+        maintainAspectRatio: false,
+        layout: { padding: 10 },
+        scales: {
+          x: {
+            type: 'category',
+            ticks: { autoSkip: true, maxRotation: 0 }
+          },
+          y: {
+            beginAtZero: false,
+            ticks: { stepSize: 4 }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: { backgroundColor: 'rgba(0,0,0,0.7)' }
+        }
+      }
+    }
+  );
+</script>
+{% endblock %}

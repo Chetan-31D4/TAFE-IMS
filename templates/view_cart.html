@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+  <div class="max-w-4xl mx-auto bg-white shadow-lg rounded-lg p-6">
+    
+    <!-- Title -->
+    <div class="flex items-center mb-6 space-x-2">
+      <span class="text-2xl">🛒</span>
+      <h1 class="text-3xl font-bold text-gray-800">My Cart</h1>
+    </div>
+
+    {% if cart %}
+    <!-- Cart Table -->
+    <div class="overflow-x-auto">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-100">
+          <tr>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Product</th>
+            <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Qty</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Reason</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Sub-Reason</th>
+            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Drone No.</th>
+            <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase">Remove</th>
+          </tr>
+        </thead>
+        <tbody class="bg-white divide-y divide-gray-200">
+          {% for item in cart %}
+          <tr class="hover:bg-gray-50 transition">
+            <td class="px-4 py-4 text-sm text-gray-700">{{ item.product_name }}</td>
+            <td class="px-4 py-4 text-sm text-gray-700 text-center">{{ item.quantity }}</td>
+            <td class="px-4 py-4 text-sm text-gray-700">{{ item.reason }}</td>
+            <td class="px-4 py-4 text-sm text-gray-700">{{ item.sub_reason }}</td>
+            <td class="px-4 py-4 text-sm text-gray-700">{{ item.drone_number }}</td>
+            <td class="px-4 py-4 text-center">
+              <form method="POST" action="{{ url_for('remove_from_cart', product_id=item.product_id) }}">
+                <button 
+                  type="submit"
+                  class="text-red-600 hover:text-red-800 text-sm"
+                  onclick="return confirm('Remove this item from cart?')"
+                >
+                  Remove
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Attach & Submit -->
+    <form
+      method="POST"
+      action="{{ url_for('submit_cart') }}"
+      enctype="multipart/form-data"
+      class="mt-6 space-y-4"
+    >
+      <label class="block text-sm font-medium text-gray-700">
+        Attach files (images, PDFs…)
+      </label>
+      <div
+        id="dropZone"
+        class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-indigo-500 transition"
+        onclick="document.getElementById('attachments').click()"
+      >
+        <input 
+          id="attachments" 
+          type="file" 
+          name="attachments" 
+          multiple 
+          class="hidden" 
+        />
+        <p id="dropText" class="text-gray-500">Click or drag files here to upload</p>
+      </div>
+
+      <!-- File names list -->
+      <div id="fileList" class="flex flex-wrap gap-2 mt-2"></div>
+
+      <button
+        type="submit"
+        onclick="return confirm('Submit all requests?')"
+        class="w-full inline-flex justify-center bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-lg shadow-md transition"
+      >
+        Submit All Requests
+      </button>
+    </form>
+
+    {% else %}
+    <!-- Empty Cart Message -->
+    <div class="py-12 text-center">
+      <p class="text-gray-500 italic">Your cart is empty.</p>
+    </div>
+    {% endif %}
+
+    <div class="mt-6 text-center">
+      <a href="{{ url_for('dashboard') }}" class="inline-flex items-center text-indigo-600 hover:text-indigo-800 text-sm">
+        ← Back to Dashboard
+      </a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const input = document.getElementById('attachments');
+  const fileList = document.getElementById('fileList');
+  const dropZone = document.getElementById('dropZone');
+
+  // Show filenames
+  input.addEventListener('change', updateFileList);
+  function updateFileList() {
+    fileList.innerHTML = '';
+    for (const file of input.files) {
+      const chip = document.createElement('div');
+      chip.className = 'px-3 py-1 bg-gray-100 text-gray-800 rounded-full text-sm flex items-center space-x-1';
+      chip.innerHTML = `
+        <span>${file.name}</span>
+        <button type="button" class="text-gray-400 hover:text-gray-600">&times;</button>
+      `;
+      // remove file on × click
+      chip.querySelector('button').onclick = () => {
+        const dt = new DataTransfer();
+        Array.from(input.files)
+             .filter(f => f !== file)
+             .forEach(f => dt.items.add(f));
+        input.files = dt.files;
+        updateFileList();
+      };
+      fileList.appendChild(chip);
+    }
+  }
+
+  // Drag & drop
+  ['dragenter','dragover'].forEach(evt =>
+    dropZone.addEventListener(evt, e => {
+      e.preventDefault();
+      dropZone.classList.add('border-indigo-500', 'bg-indigo-50');
+    })
+  );
+  ['dragleave','drop'].forEach(evt =>
+    dropZone.addEventListener(evt, e => {
+      e.preventDefault();
+      dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
+    })
+  );
+  dropZone.addEventListener('drop', e => {
+    input.files = e.dataTransfer.files;
+    updateFileList();
+  });
+</script>
+{% endblock %}
