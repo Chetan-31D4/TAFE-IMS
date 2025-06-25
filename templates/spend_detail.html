@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container mx-auto p-6">
+  <h2 class="text-2xl font-bold mb-4">
+    📈 {{ product }} spend over
+    {% if days>0 %}last {{ days }} days{% else %}all time{% endif %}
+  </h2>
+
+  <canvas id="trendChart" class="w-full h-64 bg-white rounded-lg shadow mb-6"></canvas>
+
+  <div class="overflow-x-auto bg-white rounded-lg shadow">
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Date</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Units</th>
+          <th class="px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Spend (₹)</th>
+        </tr>
+      </thead>
+      <tbody class="bg-white divide-y divide-gray-100">
+        {% for day in trend %}
+        <tr class="hover:bg-gray-50">
+          <td class="px-6 py-4 text-sm text-gray-800">{{ day.day }}</td>
+          <td class="px-6 py-4 text-sm text-gray-800">{{ day.units }}</td>
+          <td class="px-6 py-4 text-sm text-gray-800">{{ "{:.2f}".format(day.spend) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const ctx = document.getElementById('trendChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: {{ trend|map(attribute='day')|list|tojson }},
+      datasets: [{
+        label: 'Spend (₹)',
+        data: {{ trend|map(attribute='spend')|list|tojson }},
+        fill: false,
+        tension: 0.3,
+        borderWidth: 2
+      }]
+    },
+    options: {
+      scales: {
+        y: { beginAtZero: true }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+</script>
+{% endblock %}

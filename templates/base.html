@@ -12,26 +12,24 @@
 
   <!-- NAVBAR -->
   <nav class="bg-white shadow-md">
-    <div class="container mx-auto px-2 py-2 flex justify-between items-center">
-      <img 
-      src="{{ url_for('static', filename='images/TAFE-Logo.jpg') }}" 
-      alt="TAFE Logo" 
-      class="h-8 mr-4 ml-4"
-    />
-      <!-- Logo / Title -->
-      <!-- <div class="text-3xl font-semibold text-gray-800 ml-12 ">
-        Inventory Dashboard
-      </div> -->
+    <div class="container mx-auto px-4 py-2 flex justify-between items-center">
+      <!-- Home / Logo -->
+      <a href="{{ url_for('dashboard') }}" class="flex items-center space-x-2 hover:opacity-90 transition">
+        <img
+          src="{{ url_for('static', filename='images/TAFE-Logo.jpg') }}"
+          alt="TAFE Logo"
+          class="h-12 w-auto"
+        />
+        <span class="px-4 bg-blue-300 text-back-800 rounded-md text-xl hover:bg-blue-200 transition">Home</span>
+      </a>
 
       <!-- Right-hand controls -->
-      <div class="flex items-center space-x-4 mr-5">
-
+      <div class="flex items-center space-x-4">
         <!-- 🔔 Notifications -->
         <div class="relative" x-data="{ open: false }" @click.away="open = false">
-          <!-- Bell Button -->
           <button
             @click="open = !open"
-            class="relative focus:outline-none p-2 rounded-full hover:bg-gray-100 transition"
+            class="relative p-2 rounded-full hover:bg-gray-100 transition focus:outline-none"
             aria-haspopup="true"
             :aria-expanded="open.toString()"
           >
@@ -53,63 +51,57 @@
             class="absolute right-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-xl z-50 overflow-hidden"
             style="display: none;"
           >
-            <!-- Admin: Pending Edit Requests -->
             {% if session.role == 'admin' %}
-            <div class="px-4 py-2 bg-gray-100 text-gray-800 font-semibold">
-              <span class="inline-flex items-center space-x-1">
-                <span>📝</span><span>Pending Edit Requests</span>
-              </span>
-            </div>
-            {% if edit_requests %}
-              <ul class="divide-y divide-gray-200 max-h-48 overflow-y-auto">
-                {% for req in edit_requests %}
-                <li class="px-4 py-3 hover:bg-gray-50 transition flex flex-col space-y-1">
-                  <div class="flex justify-between items-center text-sm font-medium">
-                    <span>{{ req.product_name }} × {{ req.quantity }}</span>
-                    <span class="text-gray-500">by {{ req.username }}</span>
-                  </div>
-                  <div class="text-xs text-gray-600">
-                    Reason: {{ req.reason or '—' }}<br>
-                    Drone: {{ req.drone_number }}
-                  </div>
-                  <div class="mt-2 flex gap-2">
-                    <a
-                      href="{{ url_for('approve_request', request_id=req.id) }}"
-                      class="flex-1 text-center bg-green-100 text-green-800 px-2 py-1 rounded hover:bg-green-200 text-xs"
-                    >Approve</a>
-                    <a
-                      href="{{ url_for('reject_request', request_id=req.id) }}"
-                      class="flex-1 text-center bg-red-100 text-red-800 px-2 py-1 rounded hover:bg-red-200 text-xs"
-                    >Reject</a>
-                  </div>
-                </li>
-                {% endfor %}
-              </ul>
-            {% else %}
-              <div class="px-4 py-3 text-sm text-gray-500">No pending requests</div>
-            {% endif %}
+              <!-- Pending Edit Requests -->
+              <div class="px-4 py-2 bg-gray-100 font-semibold text-gray-800">
+                📝 Pending Edit Requests
+              </div>
+              {% if edit_requests %}
+                <ul class="divide-y divide-gray-200 max-h-48 overflow-y-auto">
+                  {% for req in edit_requests %}
+                    <li class="px-4 py-3 hover:bg-gray-50 transition">
+                      <div class="flex justify-between text-sm font-medium">
+                        <span>{{ req.product_name }} × {{ req.quantity }}</span>
+                        <span class="text-gray-500">by {{ req.username }}</span>
+                      </div>
+                      <div class="text-xs text-gray-600 mt-1">
+                        Reason: {{ req.reason or '—' }}<br>
+                        Drone: {{ req.drone_number }}
+                      </div>
+                      <div class="mt-2 flex gap-2">
+                        <a href="{{ url_for('approve_request', request_id=req.id) }}"
+                          class="flex-1 text-center bg-green-100 text-green-800 px-2 py-1 rounded hover:bg-green-200 text-xs">
+                          Approve
+                        </a>
+                        <a href="{{ url_for('reject_request', request_id=req.id) }}"
+                          class="flex-1 text-center bg-red-100 text-red-800 px-2 py-1 rounded hover:bg-red-200 text-xs">
+                          Reject
+                        </a>
+                      </div>
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <div class="px-4 py-3 text-sm text-gray-500">No pending requests</div>
+              {% endif %}
             {% endif %}
 
             <!-- Discussion Messages -->
-            <div class="px-4 py-2 {% if session.role=='admin' %}border-t{% else %}border-b{% endif %} bg-gray-100 text-gray-800 font-semibold">
-              <span class="inline-flex items-center space-x-1">
-                <span>💬</span><span>New Discussion Messages</span>
-              </span>
+            <div class="px-4 py-2 bg-gray-100 font-semibold text-gray-800 {% if session.role=='admin' %}border-t{% else %}border-b{% endif %}">
+              💬 New Discussion Messages
             </div>
             {% if unread_per_request %}
               <ul class="divide-y divide-gray-200 max-h-48 overflow-y-auto">
                 {% for req_id, cnt in unread_per_request.items() %}
-                <li>
-                  <a
-                    href="{{ url_for('comment_thread', request_id=req_id) }}"
-                    class="block px-4 py-3 hover:bg-gray-50 transition text-sm text-gray-700 flex justify-between items-center"
-                  >
-                    <span>Request #{{ req_id }}</span>
-                    <span class="inline-flex items-center bg-indigo-100 text-indigo-800 text-xs font-semibold px-2 py-0.5 rounded-full">
-                      {{ cnt }} new{% if cnt > 1 %}s{% endif %}
-                    </span>
-                  </a>
-                </li>
+                  <li>
+                    <a href="{{ url_for('comment_thread', request_id=req_id) }}"
+                      class="block px-4 py-3 hover:bg-gray-50 transition flex justify-between text-sm text-gray-700">
+                      <span>Request #{{ req_id }}</span>
+                      <span class="inline-flex items-center bg-indigo-100 text-indigo-800 text-xs font-semibold px-2 py-0.5 rounded-full">
+                        {{ cnt }} new{% if cnt > 1 %}s{% endif %}
+                      </span>
+                    </a>
+                  </li>
                 {% endfor %}
               </ul>
             {% else %}
@@ -118,16 +110,15 @@
           </div>
         </div>
 
-
-        <!-- User info + logout -->
+        <!-- User & Logout -->
         <div class="flex items-center space-x-4">
           <span class="text-sm text-gray-600 uppercase">
             <strong class="text-gray-800">{{ session['role'] }}</strong>
             &#129034;
-            <strong class="text-gray-800">{{ session['username'] }}</strong>
+            <strong class="text-gray-800">{{ session['username']|upper }}</strong>
           </span>
           <a href="{{ url_for('logout') }}"
-            class="px-4 py-4 bg-red-100 text-red-800 rounded-full text-xs">
+            class="px-4 bg-red-400 text-back-800 rounded-full text-2xs hover:bg-red-200 transition">
             Logout
           </a>
         </div>

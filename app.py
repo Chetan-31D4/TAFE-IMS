@@ -9,7 +9,6 @@ from datetime import datetime
 import psycopg2
 import psycopg2.extras
 from flask_mail import Mail, Message
-import os
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, session, redirect, url_for
 from datetime import datetime, timedelta
@@ -18,7 +17,6 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 from flask import request, session, redirect, url_for
 from datetime import date, timedelta
-import os
 from flask import redirect, abort
 from boto3 import client
 from botocore.exceptions import ClientError
@@ -529,9 +527,6 @@ def approve_request(request_id):
                 f"Hello {req['username']},\n\n"
                 f"Your request for {approved_qty} × {req['product_name']} has been APPROVED.\n\n"
                 f" • Approved quantity: {approved_qty}\n"
-                f" • Price per item: ₹{price_per_item:.2f}\n"
-                f" • GST-exclusive total: ₹{gst_exclusive:.2f}\n"
-                f" • Total (incl. 18% GST): ₹{total_inclusive:.2f}\n"
                 f" • Admin comment: {admin_comment or '—'}\n\n"
                 "Thank you,\nInventory Team"
             )
@@ -893,6 +888,14 @@ def add_to_cart():
     return redirect(url_for('dashboard'))
 
 
+import io
+from flask import flash, redirect, request, session, url_for
+from werkzeug.utils import secure_filename
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+ALLOWED_EXT = {'png','jpg','jpeg','pdf','docx'}
+
 @app.route('/submit_cart', methods=['POST'])
 def submit_cart():
     if 'username' not in session or session.get('role') != 'viewer':
@@ -906,9 +909,8 @@ def submit_cart():
     username  = session['username']
     timestamp = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S")
 
+    # 1) Persist the cart items into request_history
     conn, cur = get_db_cursor()
-
-    # 1) Insert each item into request_history, capture its new ID
     request_ids = []
     for item in cart:
         cur.execute('''
@@ -927,32 +929,36 @@ def submit_cart():
             item['drone_number'],
             timestamp
         ))
-        new_id = cur.fetchone()['id']
-        request_ids.append(new_id)
+        request_ids.append(cur.fetchone()['id'])
 
-    # 2) Handle file attachments
-    files = request.files.getlist('attachments')
-    for idx, req_id in enumerate(request_ids):
-        # You could attach *all* files to each request, or better:
-        # rotate so that first file goes to first request, etc.
-        # Here, we attach *all* files to *every* request:
-        for f in files:
-            filename = secure_filename(f.filename)
-            ext = filename.rsplit('.',1)[-1].lower()
-            if filename and ext in ALLOWED_EXT:
-                # stored = f"{req_id}_{filename}"
-                key = f"{req_id}/{filename}"
-                r2.upload_fileobj(f,R2_BUCKET,key)
-                cur.execute('''
-                    INSERT INTO attachments
-                      (request_id, filename, stored_path, uploaded_by)
-                    VALUES (%s, %s, %s, %s)
-                ''', (req_id, filename, key, username))
+    # 2) Read & buffer every uploaded file once
+    raw_files = []
+    for f in request.files.getlist('attachments'):
+        filename = secure_filename(f.filename or "")
+        ext = filename.rsplit('.', 1)[-1].lower()
+        if filename and ext in ALLOWED_EXT:
+            data = f.read()             # consume it now
+            raw_files.append((filename, data))
+
+    # 3) For each new request row, re-create a fresh BytesIO for each file
+    for req_id in request_ids:
+        for filename, data in raw_files:
+            key = f"{req_id}/{filename}"
+            bio = io.BytesIO(data)
+            # rewind just in case
+            bio.seek(0)
+            # upload to your R2 bucket
+            r2.upload_fileobj(bio, R2_BUCKET, key)
+            cur.execute('''
+                INSERT INTO attachments
+                  (request_id, filename, stored_path, uploaded_by)
+                VALUES (%s, %s, %s, %s)
+            ''', (req_id, filename, key, username))
 
     conn.commit()
     conn.close()
 
-    # 3) Notify all admins via email
+    # 4) Notify admins
     try:
         conn2, cur2 = get_db_cursor()
         cur2.execute("SELECT email FROM users WHERE role = 'admin'")
@@ -960,10 +966,10 @@ def submit_cart():
         conn2.close()
 
         if admins:
-            lines = [f"User {username} submitted the following requests:"]
+            lines = [f"User {username} submitted:"]
             for item in cart:
                 lines.append(
-                    f"  • {item['quantity']} × {item['product_name']} "
+                    f" • {item['quantity']}×{item['product_name']} "
                     f"(Reason: {item['reason']}, Drone: {item['drone_number']})"
                 )
             msg = Message(
@@ -975,9 +981,9 @@ def submit_cart():
     except Exception as e:
         flash(f"⚠️ Could not email admins: {e}", "warning")
 
-    # 4) Clear cart and redirect
+    # 5) Clear cart & done
     session['cart'] = []
-    flash("All requests submitted and attachments uploaded! Admins have been notified.", "success")
+    flash("Requests submitted and attachments uploaded! Admins notified.", "success")
     return redirect(url_for('dashboard'))
 
 
@@ -1804,6 +1810,98 @@ def receive_stock():
     conn.close()
     return render_template('receive_stock.html', products=products)
 
+
+from datetime import date, timedelta
+from flask import request
+
+@app.route('/spend_budget', methods=['GET'])
+def spend_budget():
+    if session.get('role') != 'admin':
+        return "Unauthorized", 403
+
+    # 1) Handle date range + search
+    start_date = request.args.get('start_date')
+    end_date   = request.args.get('end_date')
+    search     = request.args.get('search','').strip()
+
+    if not start_date:
+        start_date = (date.today() - timedelta(days=30)).isoformat()
+    if not end_date:
+        end_date = date.today().isoformat()
+
+    conn, cur = get_db_cursor()
+    cur.execute("""
+      SELECT
+        p.name                AS product_name,
+        COALESCE(SUM(rh.used), 0)            AS total_used,
+        COALESCE(SUM(rh.quantity), 0)        AS total_issued,
+        COALESCE(SUM(rh.gst_exclusive), 0)   AS gst_spend,
+        COALESCE(SUM(rh.total_inclusive), 0) AS total_spend
+      FROM products p
+      LEFT JOIN request_history rh
+        ON rh.product_id = p.id
+       AND rh.status = 'approved'
+       AND rh.decision_at::date BETWEEN %s AND %s
+      WHERE p.name ILIKE %s
+      GROUP BY p.name
+      ORDER BY p.name;
+    """, (start_date, end_date, f"%{search}%"))
+    rows = cur.fetchall()
+    conn.close()
+
+    # 2) Compute totals over exactly these filtered rows
+    total_gst   = sum(r['gst_spend']   for r in rows)
+    total_total = sum(r['total_spend'] for r in rows)
+
+    return render_template('spend_budget.html',
+                           rows=rows,
+                           start_date=start_date,
+                           end_date=end_date,
+                           search=search,
+                           total_gst=total_gst,
+                           total_total=total_total)
+
+
+
+@app.route('/spend/<product>')
+def spend_detail(product):
+    days = int(request.args.get('days', 30))
+    interval = f"{days} days" if days > 0 else None
+
+    conn, cur = get_db_cursor()
+    if interval:
+        cur.execute("""
+          SELECT
+            DATE(decision_at)        AS day,
+            SUM(quantity)            AS units,
+            SUM(gst_exclusive)       AS spend
+          FROM request_history
+          WHERE status='approved'
+            AND product_name = %s
+            AND decision_at >= NOW() - INTERVAL %s
+          GROUP BY DATE(decision_at)
+          ORDER BY day
+        """, (product, interval))
+    else:
+        cur.execute("""
+          SELECT
+            DATE(decision_at)  AS day,
+            SUM(quantity)      AS units,
+            SUM(gst_exclusive) AS spend
+          FROM request_history
+          WHERE status='approved'
+            AND product_name = %s
+          GROUP BY DATE(decision_at)
+          ORDER BY day
+        """, (product,))
+    trend = cur.fetchall()
+    conn.close()
+
+    return render_template('spend_detail.html',
+                           product=product,
+                           trend=trend,
+                           days=days)
+
 # ─── Job Assign ───────────────────────────────────────────────────────────────
 
 from flask import abort
@@ -1820,17 +1918,26 @@ def jobs():
     if request.method == 'POST':
         if session['role'] != 'admin':
             abort(403)
-        title       = request.form['title']
-        desc        = request.form.get('description','').strip()
-        assigned_to = request.form['assigned_to']
-        due_date    = request.form.get('due_date') or None
-        priority    = request.form['priority']
 
+        title        = request.form['title']
+        desc         = request.form.get('description','').strip()
+        assigned_to  = request.form['assigned_to']
+        due_date     = request.form.get('due_date') or None
+        priority     = request.form['priority']
+        reason       = request.form['reason']
+        sub_reason   = request.form['sub_reason']
+        drone_number = request.form['drone_number']
+
+        # Now include all 8 columns in the INSERT:
         cur.execute("""
-          INSERT INTO job_assignment
-            (title, description, assigned_to, due_date, priority)
-          VALUES (%s,%s,%s,%s,%s)
-        """, (title, desc, assigned_to, due_date, priority))
+        INSERT INTO job_assignment
+            (title, description, assigned_to, due_date, priority,
+            reason, sub_reason, drone_number)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+        title, desc, assigned_to, due_date, priority,
+        reason, sub_reason, drone_number
+        ))
 
         # notify via email
         cur.execute("SELECT email FROM users WHERE username=%s", (assigned_to,))

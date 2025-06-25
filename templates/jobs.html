@@ -34,37 +34,37 @@
             <label class="block text-sm font-medium">Priority</label>
             <select name="priority" required
                     class="mt-1 w-full border rounded px-2 py-1">
-              <option>Low</option>
-              <option selected>Normal</option>
-              <option>High</option>
+              <option value="Low">Low</option>
+              <option value="Normal" selected>Normal</option>
+              <option value="High">High</option>
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium">Reason</label>
             <select name="reason" required
                     class="mt-1 w-full border rounded px-2 py-1">
-              <option disabled selected>— Select —</option>
-              <option>Maintenance</option>
-              <option>Accident</option>
+              <option value="" disabled selected>— Select —</option>
+              <option value="Maintenance">Maintenance</option>
+              <option value="Accident">Accident</option>
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium">Sub-Reason</label>
             <select name="sub_reason" required
                     class="mt-1 w-full border rounded px-2 py-1">
-              <option disabled selected>— Select —</option>
-              <option>PLM</option>
-              <option>PDM</option>
-              <option>FOH</option>
+              <option value="" disabled selected>— Select —</option>
+              <option value="PLM">PLM</option>
+              <option value="PDM">PDM</option>
+              <option value="FOH">FOH</option>
             </select>
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-medium">Drone No.</label>
             <select name="drone_number" required
                     class="mt-1 w-full border rounded px-2 py-1">
-              <option disabled selected>— Select —</option>
+              <option value="" disabled selected>— Select —</option>
               {% for d in ['D-1','D-2','D-3','D-4','D-5','D-6','D-7','D-8','D-9','D-10','D-11','D-12','IFCCO-1','IFCCO-2','IFCCO-3'] %}
-                <option>{{ d }}</option>
+                <option value="{{ d }}">{{ d }}</option>
               {% endfor %}
             </select>
           </div>
@@ -91,9 +91,9 @@
                  class="border rounded px-2 py-1"/>
 
           <select name="status" class="border rounded px-2 py-1">
-            <option value="All"      {% if status_f=='All'      %}selected{% endif %}>All Statuses</option>
-            <option value="pending"  {% if status_f=='pending'  %}selected{% endif %}>Pending</option>
-            <option value="completed"{% if status_f=='completed'%}selected{% endif %}>Completed</option>
+            <option value="All"       {% if status_f=='All'      %}selected{% endif %}>All Statuses</option>
+            <option value="pending"   {% if status_f=='pending'  %}selected{% endif %}>Pending</option>
+            <option value="completed" {% if status_f=='completed'%}selected{% endif %}>Completed</option>
           </select>
 
           <select name="assigned_to" class="border rounded px-2 py-1">
@@ -104,22 +104,22 @@
           </select>
 
           <select name="reason" class="border rounded px-2 py-1">
-            <option value="All" {% if reason_f=='All' %}selected{% endif %}>All Reasons</option>
-            <option>Maintenance</option>
-            <option>Accident</option>
+            <option value="All"            {% if reason_f=='All'        %}selected{% endif %}>All Reasons</option>
+            <option value="Maintenance"    {% if reason_f=='Maintenance'%}selected{% endif %}>Maintenance</option>
+            <option value="Accident"       {% if reason_f=='Accident'   %}selected{% endif %}>Accident</option>
           </select>
 
           <select name="sub_reason" class="border rounded px-2 py-1">
             <option value="All" {% if sub_f=='All' %}selected{% endif %}>All Sub-Reasons</option>
-            <option>PLM</option>
-            <option>PDM</option>
-            <option>FOH</option>
+            <option value="PLM" {% if sub_f=='PLM' %}selected{% endif %}>PLM</option>
+            <option value="PDM" {% if sub_f=='PDM' %}selected{% endif %}>PDM</option>
+            <option value="FOH" {% if sub_f=='FOH' %}selected{% endif %}>FOH</option>
           </select>
 
           <select name="drone_number" class="border rounded px-2 py-1">
             <option value="All" {% if drone_f=='All' %}selected{% endif %}>All Drones</option>
             {% for d in ['D-1','D-2','D-3','D-4','D-5','D-6','D-7','D-8','D-9','D-10','D-11','D-12','IFCCO-1','IFCCO-2','IFCCO-3'] %}
-              <option {% if d==drone_f %}selected{% endif %}>{{ d }}</option>
+              <option value="{{ d }}" {% if d==drone_f %}selected{% endif %}>{{ d }}</option>
             {% endfor %}
           </select>
         </div>
@@ -134,101 +134,78 @@
 
   <!-- ─── Job List Table ──────────────────────────────────── -->
   <div class="bg-white rounded-lg shadow-md overflow-auto">
-  <table class="min-w-full divide-y divide-gray-200">
-    <thead class="bg-gray-50">
-      <tr class="text-gray-700">
-        <th class="px-6 py-3 text-left text-xs font-medium uppercase">Title</th>
-        <th class="px-6 py-3 text-left text-xs font-medium uppercase">Due</th>
-        <th class="px-6 py-3 text-left text-xs font-medium uppercase">Priority</th>
-        <th class="px-6 py-3 text-left text-xs font-medium uppercase">Assignee</th>
-        <th class="px-6 py-3 text-left text-xs font-medium uppercase">Reason</th>
-        <th class="px-6 py-3 text-left text-xs font-medium uppercase">Sub-Reason</th>
-        <th class="px-6 py-3 text-left text-xs font-medium uppercase">Drone No.</th>
-        <th class="px-6 py-3 text-left text-xs font-medium uppercase">Status</th>
-        {% if session.role=='viewer' %}
-        <th class="px-6 py-3 text-center text-xs font-medium uppercase">Action</th>
-        {% endif %}
-      </tr>
-    </thead>
-    <tbody class="bg-white divide-y divide-gray-100">
-      {% for job in jobs %}
-      <tr class="hover:bg-gray-50 transition">
-        <!-- Title -->
-        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">
-          {{ job.title }}
-        </td>
-
-        <!-- Due Date -->
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-          {{ job.due_date or '—' }}
-        </td>
-
-        <!-- Priority Badge -->
-        <td class="px-6 py-4 whitespace-nowrap">
-          {% if job.priority == 'High' %}
-            <span class="px-2 inline-flex text-xs font-semibold leading-5 bg-red-100 text-red-800 rounded-full">
-              High
-            </span>
-          {% elif job.priority == 'Normal' %}
-            <span class="px-2 inline-flex text-xs font-semibold leading-5 bg-yellow-100 text-yellow-800 rounded-full">
-              Normal
-            </span>
-          {% else %}
-            <span class="px-2 inline-flex text-xs font-semibold leading-5 bg-green-100 text-green-800 rounded-full">
-              Low
-            </span>
+    <table class="min-w-full divide-y divide-gray-200">
+      <thead class="bg-gray-50">
+        <tr class="text-gray-700">
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase">Title</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase">Due</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase">Priority</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase">Assignee</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase">Reason</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase">Sub-Reason</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase">Drone No.</th>
+          <th class="px-6 py-3 text-left text-xs font-medium uppercase">Status</th>
+          {% if session.role=='viewer' %}
+            <th class="px-6 py-3 text-center text-xs font-medium uppercase">Action</th>
           {% endif %}
-        </td>
-
-        <!-- Assignee -->
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-          {{ job.assigned_to }}
-        </td>
-
-        <!-- Reason / Sub-Reason -->
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-          {{ job.reason }}
-        </td>
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-          {{ job.sub_reason }}
-        </td>
-
-        <!-- Drone Number -->
-        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-          {{ job.drone_number }}
-        </td>
-
-        <!-- Status -->
-        <td class="px-6 py-4 whitespace-nowrap text-sm">
-          {% if job.status=='completed' %}
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-              ✓ Completed
-            </span>
-          {% else %}
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-              ● {{ job.status.capitalize() }}
-            </span>
+        </tr>
+      </thead>
+      <tbody class="bg-white divide-y divide-gray-100">
+        {% for job in jobs %}
+        <tr class="hover:bg-gray-50 transition">
+          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">
+            {{ job.title }}
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+            {{ job.due_date or '—' }}
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap">
+            {% if job.priority == 'High' %}
+              <span class="px-2 inline-flex text-xs font-semibold leading-5 bg-red-100 text-red-800 rounded-full">
+                High
+              </span>
+            {% elif job.priority == 'Normal' %}
+              <span class="px-2 inline-flex text-xs font-semibold leading-5 bg-yellow-100 text-yellow-800 rounded-full">
+                Normal
+              </span>
+            {% else %}
+              <span class="px-2 inline-flex text-xs font-semibold leading-5 bg-green-100 text-green-800 rounded-full">
+                Low
+              </span>
+            {% endif %}
+          </td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ job.assigned_to }}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ job.reason }}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ job.sub_reason }}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ job.drone_number }}</td>
+          <td class="px-6 py-4 whitespace-nowrap text-sm">
+            {% if job.status=='completed' %}
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                ✓ Completed
+              </span>
+            {% else %}
+              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                ● {{ job.status.capitalize() }}
+              </span>
+            {% endif %}
+          </td>
+          {% if session.role=='viewer' %}
+          <td class="px-6 py-4 whitespace-nowrap text-center">
+            {% if job.status!='completed' %}
+              <form method="POST" action="{{ url_for('complete_job', job_id=job.id) }}">
+                <button type="submit"
+                        class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
+                  Mark Done
+                </button>
+              </form>
+            {% else %}
+              <span class="text-gray-500">—</span>
+            {% endif %}
+          </td>
           {% endif %}
-        </td>
-
-        <!-- Viewer-only Action -->
-        {% if session.role=='viewer' %}
-        <td class="px-6 py-4 whitespace-nowrap text-center">
-          {% if job.status!='completed' %}
-            <form method="POST" action="{{ url_for('complete_job', job_id=job.id) }}">
-              <button type="submit"
-                      class="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded text-white bg-blue-600 hover:bg-blue-700">
-                Mark Done
-              </button>
-            </form>
-          {% else %}
-            <span class="text-gray-500">—</span>
-          {% endif %}
-        </td>
-        {% endif %}
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 {% endblock %}
