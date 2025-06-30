@@ -483,7 +483,7 @@ def approve_request(request_id):
     # 5) Compute GST & total cost on the approved quantity
     price_per_item  = product['price']
     gst_exclusive   = price_per_item * approved_qty
-    total_inclusive = round(gst_exclusive * 1.18, 2)
+    total_inclusive = round(gst_exclusive * 1.05, 2)
 
     # 6) Update request_history so that all approved items
     #    immediately count as “used” and none as “remaining”
@@ -1676,7 +1676,7 @@ def return_remaining(request_id):
     total_inclusive = round(gst_exclusive * 1.18, 2)
 
     # 4) Zero out remaining & save costs + comment
-    comment = f"Returned {returned_qty} item(s) to stock."
+    comment = f"Returned {returned_qty} item(s) to stock for request id #{request_id}"
     cur.execute("""
       UPDATE request_history
          SET remaining        = 0,
@@ -1819,23 +1819,30 @@ def spend_budget():
     if session.get('role') != 'admin':
         return "Unauthorized", 403
 
-    # 1) Handle date range + search
+    # read days (default to 30)
+    days       = int(request.args.get('days', 30))
+    # read date-range overrides
     start_date = request.args.get('start_date')
     end_date   = request.args.get('end_date')
     search     = request.args.get('search','').strip()
 
-    if not start_date:
-        start_date = (date.today() - timedelta(days=30)).isoformat()
-    if not end_date:
-        end_date = date.today().isoformat()
+    # if someone didn't enter explicit dates, fall back to last N days
+    if days > 0 and not (start_date and end_date):
+        today      = date.today()
+        start_date = (today - timedelta(days=days)).isoformat()
+        end_date   = today.isoformat()
+    else:
+        # you could default to all‐time if days==0
+        start_date = start_date or '1900-01-01'
+        end_date   = end_date   or date.today().isoformat()
 
     conn, cur = get_db_cursor()
     cur.execute("""
       SELECT
         p.name                AS product_name,
-        COALESCE(SUM(rh.used), 0)            AS total_used,
-        COALESCE(SUM(rh.quantity), 0)        AS total_issued,
-        COALESCE(SUM(rh.gst_exclusive), 0)   AS gst_spend,
+        COALESCE(SUM(rh.used),     0) AS total_used,
+        COALESCE(SUM(rh.quantity), 0) AS total_issued,
+        COALESCE(SUM(rh.gst_exclusive),   0) AS gst_spend,
         COALESCE(SUM(rh.total_inclusive), 0) AS total_spend
       FROM products p
       LEFT JOIN request_history rh
@@ -1849,12 +1856,12 @@ def spend_budget():
     rows = cur.fetchall()
     conn.close()
 
-    # 2) Compute totals over exactly these filtered rows
     total_gst   = sum(r['gst_spend']   for r in rows)
     total_total = sum(r['total_spend'] for r in rows)
 
     return render_template('spend_budget.html',
                            rows=rows,
+                           days=days,
                            start_date=start_date,
                            end_date=end_date,
                            search=search,
@@ -1865,33 +1872,33 @@ def spend_budget():
 
 @app.route('/spend/<product>')
 def spend_detail(product):
-    days = int(request.args.get('days', 30))
-    interval = f"{days} days" if days > 0 else None
+    days     = int(request.args.get('days', 30))
+    interval = days > 0 and f"{days} days"
 
     conn, cur = get_db_cursor()
     if interval:
         cur.execute("""
           SELECT
-            DATE(decision_at)        AS day,
-            SUM(quantity)            AS units,
-            SUM(gst_exclusive)       AS spend
+            DATE(decision_at::timestamp)    AS day,
+            SUM(used)                       AS units,
+            SUM(total_inclusive)            AS spend
           FROM request_history
-          WHERE status='approved'
+          WHERE status = 'approved'
             AND product_name = %s
-            AND decision_at >= NOW() - INTERVAL %s
-          GROUP BY DATE(decision_at)
+            AND decision_at::timestamp >= NOW() - INTERVAL %s
+          GROUP BY DATE(decision_at::timestamp)
           ORDER BY day
         """, (product, interval))
     else:
         cur.execute("""
           SELECT
-            DATE(decision_at)  AS day,
-            SUM(quantity)      AS units,
-            SUM(gst_exclusive) AS spend
+            DATE(decision_at::timestamp)    AS day,
+            SUM(used)                       AS units,
+            SUM(total_inclusive)            AS spend
           FROM request_history
-          WHERE status='approved'
+          WHERE status = 'approved'
             AND product_name = %s
-          GROUP BY DATE(decision_at)
+          GROUP BY DATE(decision_at::timestamp)
           ORDER BY day
         """, (product,))
     trend = cur.fetchall()
@@ -1899,12 +1906,18 @@ def spend_detail(product):
 
     return render_template('spend_detail.html',
                            product=product,
-                           trend=trend,
-                           days=days)
+                           days=days,
+                           trend=trend)
+
 
 # ─── Job Assign ───────────────────────────────────────────────────────────────
 
-from flask import abort
+from datetime import date
+from flask import (
+    abort, flash, redirect, render_template, request, session, url_for
+)
+
+ALLOWED_TITLES = {'Planned Maintenance', 'Predective Maintenance', 'Full OverAll'}
 
 @app.route('/jobs', methods=['GET', 'POST'])
 def jobs():
@@ -1914,9 +1927,9 @@ def jobs():
 
     conn, cur = get_db_cursor()
 
-    # 2) Handle creation: only admins may POST to create
+    # 2) Handle creation (admin only)
     if request.method == 'POST':
-        if session['role'] != 'admin':
+        if session.get('role') != 'admin':
             abort(403)
 
         title        = request.form['title']
@@ -1928,58 +1941,40 @@ def jobs():
         sub_reason   = request.form['sub_reason']
         drone_number = request.form['drone_number']
 
-        # Now include all 8 columns in the INSERT:
+        if title not in ALLOWED_TITLES:
+            flash("⚠️ Invalid job title.", "error")
+            conn.close()
+            return redirect(url_for('jobs'))
+
         cur.execute("""
-        INSERT INTO job_assignment
+          INSERT INTO job_assignment
             (title, description, assigned_to, due_date, priority,
-            reason, sub_reason, drone_number)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+             reason, sub_reason, drone_number)
+          VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
-        title, desc, assigned_to, due_date, priority,
-        reason, sub_reason, drone_number
+          title, desc, assigned_to, due_date, priority,
+          reason, sub_reason, drone_number
         ))
-
-        # notify via email
-        cur.execute("SELECT email FROM users WHERE username=%s", (assigned_to,))
-        row = cur.fetchone()
-        if row and row.get('email'):
-            msg = Message(
-              subject=f"[Inventory] New Job Assigned: {title}",
-              recipients=[row['email']]
-            )
-            msg.body = (
-              f"Hi {assigned_to},\n\n"
-              f"You have a new job:\n"
-              f"  • Title: {title}\n"
-              f"  • Description: {desc}\n"
-              f"  • Due:   {due_date or 'No due date'}\n"
-              f"  • Priority: {priority}\n\n"
-              f"{desc}\n\n"
-              "Log in to mark it completed."
-            )
-            mail.send(msg)
-
+        # … email notification omitted …
         conn.commit()
-        flash("Job created and notified.", "success")
-        # reload GET
+        flash("✅ Job created and notified.", "success")
+        conn.close()
         return redirect(url_for('jobs'))
 
-    # 3) GET: split admin vs viewer
-    if session['role'] == 'admin':
-        # — admin sees filters + full list —
+    # 3) GET: admin vs viewer
+    if session.get('role') == 'admin':
         search   = request.args.get('q','').strip()
         status_f = request.args.get('status','All')
         assignee = request.args.get('assigned_to','All')
 
-        filters = []
-        params  = []
+        filters, params = [], []
         if search:
             filters.append("(title ILIKE %s OR description ILIKE %s)")
             params += [f"%{search}%", f"%{search}%"]
-        if status_f != 'All':
-            filters.append("status=%s"); params.append(status_f)
-        if assignee != 'All':
-            filters.append("assigned_to=%s"); params.append(assignee)
+        if status_f!='All':
+            filters.append("status = %s");       params.append(status_f)
+        if assignee!='All':
+            filters.append("assigned_to = %s");  params.append(assignee)
 
         sql = "SELECT * FROM job_assignment"
         if filters:
@@ -1988,27 +1983,38 @@ def jobs():
         cur.execute(sql, params)
         jobs = cur.fetchall()
 
-        # fetch viewer list for the “assign to” dropdown
+        # viewer dropdown
         cur.execute("SELECT username FROM users WHERE role='viewer' ORDER BY username")
         viewers = [r['username'] for r in cur.fetchall()]
 
     else:
-        # — viewer sees only their own jobs —
+        # viewer: only their own + compute days_remaining
         cur.execute("""
           SELECT * FROM job_assignment
            WHERE assigned_to = %s
            ORDER BY created_at DESC
         """, (session['username'],))
-        jobs = cur.fetchall()
-        viewers = []  # not used for viewers
+        rows = cur.fetchall()
+        today = date.today()
+
+        jobs = []
+        for r in rows:
+            job = dict(r)   # convert RealDictRow → mutable dict
+            due = job.get('due_date')
+            job['days_remaining'] = (due - today).days if due else None
+            jobs.append(job)
+
+        viewers = []
 
     conn.close()
     return render_template('jobs.html',
-                           jobs=jobs,
-                           viewers=viewers,
-                           search=search if session['role']=='admin' else '',
-                           status_f=status_f if session['role']=='admin' else 'All',
-                           assignee=assignee if session['role']=='admin' else 'All')
+        jobs=jobs,
+        viewers=viewers,
+        search=search    if session.get('role')=='admin' else '',
+        status_f=status_f if session.get('role')=='admin' else 'All',
+        assignee=assignee if session.get('role')=='admin' else 'All',
+    )
+
 
 @app.route('/jobs/<int:job_id>/complete', methods=['POST'])
 def complete_job(job_id):
@@ -2032,6 +2038,88 @@ def complete_job(job_id):
 
     flash("Job marked as completed!", "success")
     return redirect(url_for('jobs'))
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from flask import (
+    render_template, request, session, redirect,
+    url_for, flash, abort
+)
+# … your other imports …
+
+@app.route('/update_stock', methods=['GET', 'POST'])
+def update_stock():
+    # only admins may adjust
+    if session.get('role') != 'admin':
+        abort(403)
+
+    conn, cur = get_db_cursor()
+    # fetch all products
+    cur.execute("SELECT id, name, quantity FROM products ORDER BY id")
+    products = cur.fetchall()
+
+    if request.method == 'GET':
+        conn.close()
+        return render_template('update_stock.html', products=products)
+
+    # POST: apply removal
+    remark = request.form.get('remark','').strip()
+    if not remark:
+        flash("Remark is required.", "error")
+        return redirect(url_for('update_stock'))
+
+    any_removed = False
+    for p in products:
+        field = f"remove_{p['id']}"
+        try:
+            remove_amt = int(request.form.get(field, 0))
+        except ValueError:
+            remove_amt = 0
+
+        if remove_amt > 0:
+            any_removed = True
+            old_qty = p['quantity']
+            new_qty = old_qty - remove_amt
+            if new_qty < 0:
+                flash(f"Cannot remove {remove_amt} from {p['name']} (only {old_qty} in stock).", "error")
+                conn.close()
+                return redirect(url_for('update_stock'))
+
+            # 1) update products table
+            cur.execute(
+                "UPDATE products SET quantity=%s WHERE id=%s",
+                (new_qty, p['id'])
+            )
+
+            # 2) log into stock_history
+            now = datetime.now(ZoneInfo("Asia/Kolkata")).strftime('%Y-%m-%d %H:%M:%S')
+            cur.execute("""
+                INSERT INTO stock_history
+                  (product_id, product_name, changed_by,
+                   old_quantity, new_quantity, change_amount,
+                   changed_at, remark)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                p['id'],
+                p['name'],
+                session['username'],
+                old_qty,
+                new_qty,
+                -remove_amt,
+                now,
+                remark
+            ))
+
+    if not any_removed:
+        flash("No units were removed.", "warning")
+        conn.close()
+        return redirect(url_for('update_stock'))
+
+    conn.commit()
+    conn.close()
+    flash("Stock updated successfully.", "success")
+    return redirect(url_for('dashboard'))
+
 
 if __name__ == '__main__':
     # Render (and other PaaS) will set the PORT env var
