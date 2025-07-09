@@ -126,12 +126,23 @@
         <div class="flex items-center space-x-4">
           <span class="text-sm text-gray-600 uppercase">
             <strong class="text-gray-800">{{ session['role'] }}</strong>
-            &#129034;
+            &#129034;x
             <strong class="text-gray-800">{{ session['username']|upper }}</strong>
           </span>
           <a href="{{ url_for('logout') }}"
-            class="px-4 bg-red-400 text-back-800 rounded-full text-2xs hover:bg-red-200 transition">
-            Logout
+            class="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-red-500 to-pink-500
+                    text-white font-semibold rounded-full shadow-md hover:from-red-600 hover:to-pink-600
+                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-pink-400 transition">
+            <!-- power icon -->
+            <svg xmlns="http://www.w3.org/2000/svg"
+                class="h-4 w-4"
+                viewBox="0 0 20 20"
+                fill="currentColor">
+              <path fill-rule="evenodd"
+                    d="M10 1a1 1 0 011 1v8a1 1 0 11-2 0V2a1 1 0 011-1zm-3.657 3.657a1 1 0 011.414 0A7 7 0 1117 10a1 1 0 112 0 9 9 0 10-13.243-6.343z"
+                    clip-rule="evenodd"/>
+            </svg>
+            <span>Logout</span>
           </a>
         </div>
       </div>
@@ -191,5 +202,24 @@
     }
   </script>
 
+  <script>
+    // only do this for viewers, once they’re logged in
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!navigator.geolocation) return;
+
+      navigator.geolocation.getCurrentPosition(pos => {
+        fetch("/api/location", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            latitude:  pos.coords.latitude,
+            longitude: pos.coords.longitude
+          })
+        });
+      }, err => {
+        console.warn("Geolocation denied or unavailable", err);
+      });
+    });
+  </script>
 </body>
 </html>

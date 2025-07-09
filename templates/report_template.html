@@ -1,0 +1,12 @@
+<!DOCTYPE html><html><body>
+  <h1>{{name}}</h1>
+  {% for item in widgets %}
+    <h2>{{item.w.title}}</h2>
+    <table border=1>
+      <tr>{% for h in item.data[0].keys() %}<th>{{h}}</th>{% endfor %}</tr>
+      {% for row in item.data %}
+      <tr>{% for cell in row.values() %}<td>{{cell}}</td>{% endfor %}</tr>
+      {% endfor %}
+    </table>
+  {% endfor %}
+</body></html>

@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-3xl mx-auto py-6 space-y-8">
+  <h2 class="text-2xl font-bold">📁 Submissions for Job #{{ job.id }} – {{ job.title }}</h2>
+
+  {% for s in submissions %}
+    <div class="bg-white rounded-lg shadow p-6">
+
+      <!-- header (who/when) -->
+      <div class="flex justify-between text-sm text-gray-500 mb-4">
+        <span>By {{ s.submitted_by }}</span>
+        <span>{{ s.submitted_at }}</span>
+      </div>
+
+      <!-- top-level fields -->
+      <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 mb-6 text-sm">
+        {% for label, key in top_fields %}
+          <div {% if loop.index0 == 2 %}class="sm:col-span-2"{% endif %}>
+            <dt class="font-semibold text-gray-700">{{ label }}</dt>
+            <dd class="mt-1 text-gray-800">
+              {{ s.data.get(key, '—') }}
+            </dd>
+          </div>
+        {% endfor %}
+      </dl>
+
+      <!-- checklist sections -->
+      {% for section, fields in checklist %}
+        <div class="mb-6">
+          <h3 class="font-semibold text-gray-700 mb-2">{{ section }}</h3>
+          <dl class="divide-y divide-gray-100 bg-gray-50 rounded-lg overflow-hidden">
+            {% for field in fields %}
+              <div class="px-4 py-2 flex justify-between items-center">
+                <dt class="text-sm text-gray-600">{{ field }}</dt>
+                <dd class="text-sm font-medium text-gray-800">
+                  {{ s.data.get(field, '—') }}
+                </dd>
+              </div>
+            {% endfor %}
+          </dl>
+        </div>
+      {% endfor %}
+
+    </div>
+  {% else %}
+    <p class="italic text-gray-600">No submissions yet.</p>
+  {% endfor %}
+</div>
+{% endblock %}

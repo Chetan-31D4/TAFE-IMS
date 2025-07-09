@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-md mx-auto py-6">
+  <h2 class="text-2xl font-bold mb-4">✏️ Edit User: {{ user.username }}</h2>
+
+  <form method="POST" class="bg-white p-6 rounded-lg shadow space-y-4">
+    <div>
+      <label class="block text-sm font-medium">Email</label>
+      <input type="email" name="email" value="{{ user.email }}" required
+             class="mt-1 w-full border rounded px-2 py-1"/>
+    </div>
+    <div>
+      <label class="block text-sm font-medium">New Password <span class="text-gray-500 text-xs">(leave blank to keep)</span></label>
+      <input type="password" name="password"
+             class="mt-1 w-full border rounded px-2 py-1"/>
+    </div>
+    <div class="flex justify-end space-x-2">
+      <a href="{{ url_for('manage_users') }}"
+         class="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400">
+        Cancel
+      </a>
+      <button type="submit"
+              class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        Save Changes
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

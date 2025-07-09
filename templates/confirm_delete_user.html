@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-md mx-auto py-10">
+  <h2 class="text-xl font-semibold mb-4">Delete user “{{ user.username }}”?</h2>
+  <form method="POST" class="space-y-4 bg-white p-6 rounded-lg shadow">
+    <div>
+      <label for="admin_password" class="block font-medium">Your password</label>
+      <input
+        id="admin_password"
+        name="admin_password"
+        type="password"
+        required
+        class="mt-1 w-full border rounded px-3 py-2"
+        placeholder="Enter your admin password to confirm"
+      />
+    </div>
+    <div class="flex justify-end space-x-2">
+      <a href="{{ url_for('manage_users') }}"
+         class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Cancel</a>
+      <button type="submit"
+              class="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700">
+        Delete User
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

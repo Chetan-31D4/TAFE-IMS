@@ -254,5 +254,63 @@
       });
     });
   </script>
+
+<div id="pagination" class="flex mt-6 space-x-2"></div>
+
+  <script>
+    (function() {
+      const rowsPerPage = 75;
+      const table      = document.getElementById('historyTable');
+      const tbody      = table.querySelector('tbody');
+      const rows       = Array.from(tbody.querySelectorAll('tr'));
+      const pageCount  = Math.ceil(rows.length / rowsPerPage);
+      let   currentPage = 1;
+
+      function renderPage(page) {
+        currentPage = page;
+        const start = (page - 1) * rowsPerPage;
+        const end   = start + rowsPerPage;
+
+        rows.forEach((row, idx) => {
+          row.style.display = (idx >= start && idx < end) ? '' : 'none';
+        });
+
+        renderPagination();
+      }
+
+      function renderPagination() {
+        const container = document.getElementById('pagination');
+        container.innerHTML = '';
+
+        // Previous button
+        const prev = document.createElement('button');
+        prev.textContent = '‹ Prev';
+        prev.disabled = currentPage === 1;
+        prev.className = 'px-3 py-1 rounded border';
+        prev.onclick = () => renderPage(currentPage - 1);
+        container.appendChild(prev);
+
+        // Page numbers (you can limit the range shown if you like)
+        for (let i = 1; i <= pageCount; i++) {
+          const btn = document.createElement('button');
+          btn.textContent = i;
+          btn.className = 'px-3 py-1 rounded border ' + (i === currentPage ? 'bg-blue-500 text-white' : '');
+          btn.onclick = () => renderPage(i);
+          container.appendChild(btn);
+        }
+
+        // Next button
+        const next = document.createElement('button');
+        next.textContent = 'Next ›';
+        next.disabled = currentPage === pageCount;
+        next.className = 'px-3 py-1 rounded border';
+        next.onclick = () => renderPage(currentPage + 1);
+        container.appendChild(next);
+      }
+
+      // initialize
+      renderPage(1);
+    })();
+  </script>
   {% endif %}
 {% endblock %}

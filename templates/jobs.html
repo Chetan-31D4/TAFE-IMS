@@ -5,26 +5,22 @@
   {% if session.role == 'admin' %}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
 
-      <!-- ─── Create New Job ────────────────────────────────── -->
-      <form method="POST"
-            action="{{ url_for('jobs') }}"
-            class="space-y-4 bg-white p-6 rounded-lg shadow">
+      <!-- Create New Job -->
+      <form method="POST" action="{{ url_for('jobs') }}" class="bg-white p-6 rounded-lg shadow space-y-4">
         <h3 class="font-semibold">➕ Create New Job</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium">Title</label>
-            <select name="title" required
-                    class="mt-1 w-full border rounded px-2 py-1">
+            <select name="title" required class="mt-1 w-full border rounded px-2 py-1">
               <option value="" disabled selected>— Select Job Type —</option>
-              <option value="Planned Maintenance">Planned Maintenance</option>
-              <option value="Predective Maintenance">Predective Maintenance</option>
-              <option value="Full OverAll">Full OverAll</option>
+              {% for t in ['Planned Maintenance','Predective Maintenance','Full Overhaul'] %}
+                <option value="{{ t }}">{{ t }}</option>
+              {% endfor %}
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium">Assign To</label>
-            <select name="assigned_to" required
-                    class="mt-1 w-full border rounded px-2 py-1">
+            <select name="assigned_to" required class="mt-1 w-full border rounded px-2 py-1">
               {% for v in viewers %}
                 <option value="{{ v }}">{{ v }}</option>
               {% endfor %}
@@ -32,104 +28,69 @@
           </div>
           <div>
             <label class="block text-sm font-medium">Due Date</label>
-            <input type="date" name="due_date"
-                   class="mt-1 w-full border rounded px-2 py-1"/>
+            <input type="date" name="due_date" class="mt-1 w-full border rounded px-2 py-1"/>
           </div>
           <div>
             <label class="block text-sm font-medium">Priority</label>
-            <select name="priority" required
-                    class="mt-1 w-full border rounded px-2 py-1">
-              <option value="Low">Low</option>
-              <option value="Normal" selected>Normal</option>
-              <option value="High">High</option>
+            <select name="priority" class="mt-1 w-full border rounded px-2 py-1">
+              <option>Low</option>
+              <option selected>Normal</option>
+              <option>High</option>
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium">Reason</label>
-            <select name="reason" required
-                    class="mt-1 w-full border rounded px-2 py-1">
-              <option value="" disabled selected>— Select —</option>
-              <option value="Maintenance">Maintenance</option>
-              <option value="Accident">Accident</option>
+            <select name="reason" class="mt-1 w-full border rounded px-2 py-1">
+              <option>Maintenance</option>
+              <option>Accident</option>
             </select>
           </div>
           <div>
             <label class="block text-sm font-medium">Sub-Reason</label>
-            <select name="sub_reason" required
-                    class="mt-1 w-full border rounded px-2 py-1">
-              <option value="" disabled selected>— Select —</option>
-              <option value="PLM">PLM</option>
-              <option value="PDM">PDM</option>
-              <option value="FOH">FOH</option>
+            <select name="sub_reason" class="mt-1 w-full border rounded px-2 py-1">
+              <option>PLM</option>
+              <option>PDM</option>
+              <option>FOH</option>
             </select>
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-medium">Drone No.</label>
-            <select name="drone_number" required
-                    class="mt-1 w-full border rounded px-2 py-1">
-              <option value="" disabled selected>— Select —</option>
-              {% for d in ['D-1','D-2','D-3','D-4','D-5','D-6','D-7','D-8','D-9','D-10','D-11','D-12','IFCCO-1','IFCCO-2','IFCCO-3'] %}
-                <option value="{{ d }}">{{ d }}</option>
+            <select name="drone_number" class="mt-1 w-full border rounded px-2 py-1">
+              {% for d in ['D-1','D-2','D-3','D-4','D-5','D-6','D-7','D-8','D-9','D-10','D-11','D-12','D-13','D-14','IFCCO-1','IFCCO-2','IFCCO-3'] %}
+                <option>{{ d }}</option>
               {% endfor %}
             </select>
           </div>
           <div class="md:col-span-2">
             <label class="block text-sm font-medium">Description</label>
-            <textarea name="description" rows="2"
-                      class="mt-1 w-full border rounded px-2 py-1"></textarea>
+            <textarea name="description" rows="2" class="mt-1 w-full border rounded px-2 py-1"></textarea>
           </div>
         </div>
-        <button type="submit"
-                class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
           Create Job
         </button>
       </form>
 
-      <!-- ─── Filters ───────────────────────────────────────── -->
-      <form method="GET"
-            action="{{ url_for('jobs') }}"
-            class="bg-white p-6 rounded-lg shadow space-y-4">
+      <!-- Job Filters -->
+      <form method="GET" action="{{ url_for('jobs') }}" class="bg-white p-6 rounded-lg shadow space-y-4">
         <h3 class="font-semibold">🔎 Filters</h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <input name="q" type="text" placeholder="Search title/desc…"
-                 value="{{ search }}"
-                 class="border rounded px-2 py-1"/>
+          <input name="q" type="text" placeholder="Search title/desc…" value="{{ search }}" class="border rounded px-2 py-1"/>
 
           <select name="status" class="border rounded px-2 py-1">
-            <option value="All"       {% if status_f=='All'      %}selected{% endif %}>All Statuses</option>
-            <option value="pending"   {% if status_f=='pending'  %}selected{% endif %}>Pending</option>
-            <option value="completed" {% if status_f=='completed'%}selected{% endif %}>Completed</option>
+            <option value="All" {% if status_f == 'All' %}selected{% endif %}>All Statuses</option>
+            <option value="pending" {% if status_f == 'pending' %}selected{% endif %}>Pending</option>
+            <option value="completed" {% if status_f == 'completed' %}selected{% endif %}>Completed</option>
           </select>
 
           <select name="assigned_to" class="border rounded px-2 py-1">
-            <option value="All" {% if assignee=='All' %}selected{% endif %}>All Assignees</option>
+            <option value="All" {% if assignee == 'All' %}selected{% endif %}>All Assignees</option>
             {% for v in viewers %}
-              <option value="{{ v }}" {% if v==assignee %}selected{% endif %}>{{ v }}</option>
-            {% endfor %}
-          </select>
-
-          <select name="reason" class="border rounded px-2 py-1">
-            <option value="All"            {% if reason_f=='All'        %}selected{% endif %}>All Reasons</option>
-            <option value="Maintenance"    {% if reason_f=='Maintenance'%}selected{% endif %}>Maintenance</option>
-            <option value="Accident"       {% if reason_f=='Accident'   %}selected{% endif %}>Accident</option>
-          </select>
-
-          <select name="sub_reason" class="border rounded px-2 py-1">
-            <option value="All" {% if sub_f=='All' %}selected{% endif %}>All Sub-Reasons</option>
-            <option value="PLM" {% if sub_f=='PLM' %}selected{% endif %}>PLM</option>
-            <option value="PDM" {% if sub_f=='PDM' %}selected{% endif %}>PDM</option>
-            <option value="FOH" {% if sub_f=='FOH' %}selected{% endif %}>FOH</option>
-          </select>
-
-          <select name="drone_number" class="border rounded px-2 py-1">
-            <option value="All" {% if drone_f=='All' %}selected{% endif %}>All Drones</option>
-            {% for d in ['D-1','D-2','D-3','D-4','D-5','D-6','D-7','D-8','D-9','D-10','D-11','D-12','IFCCO-1','IFCCO-2','IFCCO-3'] %}
-              <option value="{{ d }}" {% if d==drone_f %}selected{% endif %}>{{ d }}</option>
+              <option value="{{ v }}" {% if v == assignee %}selected{% endif %}>{{ v }}</option>
             {% endfor %}
           </select>
         </div>
-        <button type="submit"
-                class="mt-2 bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
+        <button type="submit" class="mt-2 bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
           Apply Filters
         </button>
       </form>
@@ -137,11 +98,11 @@
     </div>
   {% endif %}
 
-  <!-- ─── Job List Table ──────────────────────────────────── -->
-  <div class="bg-white rounded-lg shadow-md overflow-auto">
+  <!-- Job List -->
+  <div class="bg-white rounded-lg shadow overflow-auto">
     <table id="jobsTable" class="min-w-full divide-y divide-gray-200">
       <thead class="bg-gray-50">
-        <tr class="text-gray-700">
+        <tr>
           <th class="px-6 py-3 text-left text-xs font-medium uppercase">Sl No.</th>
           <th class="px-6 py-3 text-left text-xs font-medium uppercase">Title</th>
           <th class="px-6 py-3 text-left text-xs font-medium uppercase">Due</th>
@@ -151,58 +112,49 @@
           <th class="px-6 py-3 text-left text-xs font-medium uppercase">Sub-Reason</th>
           <th class="px-6 py-3 text-left text-xs font-medium uppercase">Drone No.</th>
           <th class="px-6 py-3 text-left text-xs font-medium uppercase">Status</th>
-          {% if session.role=='viewer' %}
-            <th class="px-6 py-3 text-left text-xs font-medium uppercase">Days Left</th>
+          {% if session.role == 'viewer' %}
             <th class="px-6 py-3 text-center text-xs font-medium uppercase">Action</th>
           {% endif %}
         </tr>
       </thead>
       <tbody class="bg-white divide-y divide-gray-100">
         {% for job in jobs %}
-        <tr class="hover:bg-gray-50 transition">
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ loop.index }}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-800">{{ job.title }}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ job.due_date or '—' }}</td>
-          <td class="px-6 py-4 whitespace-nowrap">
-            {% if job.priority == 'High' %}
-              <span class="px-2 inline-flex text-xs font-semibold bg-red-100 text-red-800 rounded-full">High</span>
-            {% elif job.priority == 'Normal' %}
-              <span class="px-2 inline-flex text-xs font-semibold bg-yellow-100 text-yellow-800 rounded-full">Normal</span>
+        <tr class="hover:bg-gray-50">
+          <td class="px-6 py-4 text-sm text-gray-700">{{ loop.index }}</td>
+          <td class="px-6 py-4 text-sm font-medium text-gray-800">{{ job.title }}</td>
+          <td class="px-6 py-4 text-sm text-gray-700">{{ job.due_date or '—' }}</td>
+          <td class="px-6 py-4">
+            <span class="px-2 inline-flex text-xs font-semibold 
+              {% if job.priority == 'High' %}bg-red-100 text-red-800
+              {% elif job.priority == 'Normal' %}bg-yellow-100 text-yellow-800
+              {% else %}bg-green-100 text-green-800{% endif %}
+              rounded-full">
+              {{ job.priority }}
+            </span>
+          </td>
+          <td class="px-6 py-4 text-sm text-gray-700">{{ job.assigned_to }}</td>
+          <td class="px-6 py-4 text-sm text-gray-700">{{ job.reason }}</td>
+          <td class="px-6 py-4 text-sm text-gray-700">{{ job.sub_reason }}</td>
+          <td class="px-6 py-4 text-sm text-gray-700">{{ job.drone_number }}</td>
+          <td class="px-6 py-4 text-sm">
+            {% if job.status == 'completed' %}
+              <span class="inline-flex items-center px-2 py-0.5 bg-green-100 text-green-800 text-xs rounded-full">
+                ✓ Completed
+              </span>
             {% else %}
-              <span class="px-2 inline-flex text-xs font-semibold bg-green-100 text-green-800 rounded-full">Low</span>
+              <span class="inline-flex items-center px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full">
+                ● Pending
+              </span>
             {% endif %}
           </td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ job.assigned_to }}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ job.reason }}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ job.sub_reason }}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{{ job.drone_number }}</td>
-          <td class="px-6 py-4 whitespace-nowrap text-sm">
-            {% if job.status=='completed' %}
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">✓ Completed</span>
-            {% else %}
-              <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">● {{ job.status.capitalize() }}</span>
-            {% endif %}
-          </td>
-          {% if session.role=='viewer' %}
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-              {% if job.days_remaining is none %}
-                —
-              {% elif job.days_remaining >= 0 %}
-                {{ job.days_remaining }} day{% if job.days_remaining != 1 %}s{% endif %} left
-              {% else %}
-                <span class="text-red-600">Overdue by {{ -job.days_remaining }} day{% if job.days_remaining != -1 %}s{% endif %}</span>
-              {% endif %}
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-center">
-              {% if job.status!='completed' %}
+          {% if session.role == 'viewer' %}
+            <td class="px-6 py-4 text-center">
+              {% if job.status != 'completed' %}
                 <form method="POST" action="{{ url_for('complete_job', job_id=job.id) }}">
-                  <button type="submit"
-                          class="inline-flex items-center px-3 py-1 text-xs font-medium rounded bg-blue-600 text-white hover:bg-blue-700">
-                    Mark Done
-                  </button>
+                  <button type="submit" class="text-indigo-600 hover:underline text-sm">Mark Done</button>
                 </form>
               {% else %}
-                <span class="text-gray-500">—</span>
+                <span class="text-gray-500 text-sm">—</span>
               {% endif %}
             </td>
           {% endif %}
@@ -212,20 +164,21 @@
     </table>
   </div>
 
-  <!-- DataTables for pagination -->
+  <!-- DataTables Pagination -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script>
-    document.addEventListener('DOMContentLoaded', () => {
+    $(document).ready(function() {
       $('#jobsTable').DataTable({
-        paging:       true,
-        info:         false,
-        ordering:     true,
+        paging: true,
+        info: false,
+        ordering: true,
         lengthChange: false,
-        pageLength:   10,
-        dom:          't<"mt-4"p>'  // table and then pager only
+        pageLength: 10,
+        dom: 't<"mt-4"p>'  // table then pager only
       });
     });
   </script>
+
 {% endblock %}

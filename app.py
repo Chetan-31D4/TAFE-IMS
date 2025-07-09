@@ -1,4 +1,5 @@
 import os
+import json
 import time
 import pandas as pd
 from flask     import Flask, render_template, request, redirect, url_for, session, flash, send_file, send_from_directory
@@ -18,13 +19,15 @@ from werkzeug.utils import secure_filename
 from flask import request, session, redirect, url_for
 from datetime import date, timedelta
 from flask import redirect, abort
+import boto3
 from boto3 import client
 from botocore.exceptions import ClientError
+from werkzeug.security import generate_password_hash, check_password_hash
+
 
 ALLOWED_INVOICE_EXT = {'pdf'}
 
 load_dotenv()
-import boto3
 
 # === Cloudflare R2 client ===
 R2_KEY    = os.getenv("R2_ACCESS_KEY_ID")
@@ -41,14 +44,19 @@ r2 = boto3.client(
 )
 
 app = Flask(__name__)
+
+from datetime import timedelta
+
+# enforce a 15-minute inactivity timeout
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
 app.secret_key = os.urandom(24)
 
 app.config['MAIL_SERVER']        = 'smtp.gmail.com'
 app.config['MAIL_PORT']          = 587
 app.config['MAIL_USE_TLS']       = True
-app.config['MAIL_USERNAME']      = 'chetansinghal.fin@gmail.com'
-app.config['MAIL_PASSWORD']      = 'ogjz xgug kbwy sfry'
-app.config['MAIL_DEFAULT_SENDER']= ('Inventory System', 'no-reply@mydomain.com')
+app.config['MAIL_USERNAME']      = 'tafe.inventory@gmail.com'
+app.config['MAIL_PASSWORD']      = 'vjvg yuhl vbbd jaac'
+app.config['MAIL_DEFAULT_SENDER']= ('Inventory Systems', 'no-reply@mydomain.com')
 
 mail = Mail(app)
 
@@ -116,6 +124,7 @@ def get_db_cursor():
 from flask import session
 # … your other imports …
 
+
 @app.context_processor
 def inject_unread_comments():
     if 'username' not in session:
@@ -143,6 +152,17 @@ def inject_unread_comments():
       'unread_comments':      total_unread,
       'unread_per_request':   unread_per_request
     }
+
+@app.before_request
+def check_session_timeout():
+    # Flask clears session when it’s expired, so if they had a username before...
+    if 'username' in session:
+        # do nothing—still valid
+        return
+    # but if they *were* on an auth-protected page and now no longer are:
+    if request.endpoint not in ('login', 'static'):
+        flash("⏰ Session expired; please log in again.", "info")
+
 
 @app.route('/contact')
 def contact_us():
@@ -341,27 +361,65 @@ def edit_product(id):
     return redirect(url_for('dashboard'))
 
 
+from flask import (
+    Flask, render_template, request, session,
+    redirect, url_for, flash
+)
+from werkzeug.security import check_password_hash
+import json
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
+        username = request.form['username'].strip()
         password = request.form['password']
-        
-        # conn = sqlite3.connect('inventory.db')
-        conn = get_db()
-        c = conn.cursor()
-        c.execute("SELECT * FROM users WHERE username=%s AND password=%s", (username, password))
-        user = c.fetchone()
-        conn.close()
+        lat = request.form.get('lat')
+        lng = request.form.get('lng')
 
-        if user:
+        conn, cur = get_db_cursor()
+        # only active users
+        cur.execute("""
+          SELECT id, username, password, role
+            FROM users
+           WHERE username = %s
+             AND is_active = TRUE
+        """, (username,))
+        user = cur.fetchone()
+
+        if user and check_password_hash(user['password'], password):
+            # successful login
+            session.permanent   = True
+            session['user_id']  = user['id']
             session['username'] = user['username']
-            session['role'] = user['role']  # 'admin' or 'viewer'
+            session['role']     = user['role']
+
+            # record geo if provided
+            if lat and lng:
+                cur.execute(
+                  "INSERT INTO user_locations(username, latitude, longitude) VALUES(%s,%s,%s)",
+                  (username, lat, lng)
+                )
+                conn.commit()
+
+            conn.close()
             return redirect(url_for('dashboard'))
-        else:
-            return "Invalid credentials"
+
+        conn.close()
+        flash("Invalid credentials or account disabled.", "error")
+
     return render_template('login.html')
+
+
+from functools import wraps
+from flask import session, redirect, url_for
+
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if 'username' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return wrapper
 
 
 from datetime import datetime
@@ -528,7 +586,7 @@ def approve_request(request_id):
                 f"Your request for {approved_qty} × {req['product_name']} has been APPROVED.\n\n"
                 f" • Approved quantity: {approved_qty}\n"
                 f" • Admin comment: {admin_comment or '—'}\n\n"
-                "Thank you,\nInventory Team"
+                "Thank you,\nInventory Team,\nTAFE"
             )
             mail.send(msg)
     except Exception as e:
@@ -610,7 +668,7 @@ def reject_request(request_id):
                 f"Your request for {req['quantity']} × {req['product_name']} has been *REJECTED*.\n"
                 f"  • Admin comment: {admin_comment or '—'}\n\n"
                 "Please contact the inventory team if you have questions.\n\n"
-                "Regards,\nInventory System"
+                "Regards,\nInventory System,\nTAFE"
             )
             mail.send(msg)
     except Exception as e:
@@ -1869,6 +1927,62 @@ def spend_budget():
                            total_total=total_total)
 
 
+from flask import send_file
+import pandas as pd
+from io import BytesIO
+
+@app.route('/spend_budget/download', methods=['GET'])
+def download_spend_budget():
+    if session.get('role') != 'admin':
+        return "Unauthorized", 403
+
+    days       = int(request.args.get('days', 30))
+    start_date = request.args.get('start_date')
+    end_date   = request.args.get('end_date')
+    search     = request.args.get('search','').strip()
+
+    if days > 0 and not (start_date and end_date):
+        today = date.today()
+        start_date = (today - timedelta(days=days)).isoformat()
+        end_date   = today.isoformat()
+    else:
+        start_date = start_date or '1900-01-01'
+        end_date   = end_date   or date.today().isoformat()
+
+    conn, cur = get_db_cursor()
+    cur.execute("""
+      SELECT
+        p.name                AS product_name,
+        COALESCE(SUM(rh.used),     0) AS total_used,
+        COALESCE(SUM(rh.quantity), 0) AS total_issued,
+        COALESCE(SUM(rh.gst_exclusive),   0) AS gst_spend,
+        COALESCE(SUM(rh.total_inclusive), 0) AS total_spend
+      FROM products p
+      LEFT JOIN request_history rh
+        ON rh.product_id = p.id
+       AND rh.status = 'approved'
+       AND rh.decision_at::date BETWEEN %s AND %s
+      WHERE p.name ILIKE %s
+      GROUP BY p.name
+      ORDER BY p.name;
+    """, (start_date, end_date, f"%{search}%"))
+    rows = cur.fetchall()
+    conn.close()
+
+    # Convert to DataFrame
+    df = pd.DataFrame(rows)
+
+    # Create in-memory Excel file
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='SpendBudget')
+    output.seek(0)
+
+    return send_file(output,
+                     download_name='spend_budget.xlsx',
+                     as_attachment=True,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
 
 @app.route('/spend/<product>')
 def spend_detail(product):
@@ -1921,19 +2035,19 @@ ALLOWED_TITLES = {'Planned Maintenance', 'Predective Maintenance', 'Full OverAll
 
 @app.route('/jobs', methods=['GET', 'POST'])
 def jobs():
-    # 1) Must be logged in
     if 'username' not in session:
         return redirect(url_for('login'))
 
     conn, cur = get_db_cursor()
 
-    # 2) Handle creation (admin only)
+    # ── 1) Handle creation (admin only) ─────────────────────────────
     if request.method == 'POST':
         if session.get('role') != 'admin':
             abort(403)
 
+        # pull form
         title        = request.form['title']
-        desc         = request.form.get('description','').strip()
+        description  = request.form.get('description','').strip()
         assigned_to  = request.form['assigned_to']
         due_date     = request.form.get('due_date') or None
         priority     = request.form['priority']
@@ -1946,23 +2060,45 @@ def jobs():
             conn.close()
             return redirect(url_for('jobs'))
 
+        # insert
         cur.execute("""
           INSERT INTO job_assignment
             (title, description, assigned_to, due_date, priority,
              reason, sub_reason, drone_number)
           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+          RETURNING id
         """, (
-          title, desc, assigned_to, due_date, priority,
+          title, description, assigned_to, due_date, priority,
           reason, sub_reason, drone_number
         ))
-        # … email notification omitted …
+        job_id = cur.fetchone()['id']
         conn.commit()
+
+        # email notify
+        cur.execute("SELECT email FROM users WHERE username=%s", (assigned_to,))
+        u = cur.fetchone()
+        if u and u.get('email'):
+            msg = Message(
+              subject=f"[Inventory] New Job Assigned: {title}",
+              recipients=[u['email']]
+            )
+            msg.body = (
+              f"Hi {assigned_to},\n\n"
+              f"A new job has been assigned to you:\n"
+              f"  • Title: {title}\n"
+              f"  • Due:   {due_date or 'No due date'}\n\n"
+              f"{description}\n\n"
+              "Please log in to mark it completed."
+            )
+            mail.send(msg)
+
         flash("✅ Job created and notified.", "success")
         conn.close()
         return redirect(url_for('jobs'))
 
-    # 3) GET: admin vs viewer
+    # ── 2) GET: filters + listing ────────────────────────────────────
     if session.get('role') == 'admin':
+        # pull filter params
         search   = request.args.get('q','').strip()
         status_f = request.args.get('status','All')
         assignee = request.args.get('assigned_to','All')
@@ -1971,10 +2107,10 @@ def jobs():
         if search:
             filters.append("(title ILIKE %s OR description ILIKE %s)")
             params += [f"%{search}%", f"%{search}%"]
-        if status_f!='All':
-            filters.append("status = %s");       params.append(status_f)
-        if assignee!='All':
-            filters.append("assigned_to = %s");  params.append(assignee)
+        if status_f != 'All':
+            filters.append("status = %s");    params.append(status_f)
+        if assignee != 'All':
+            filters.append("assigned_to = %s"); params.append(assignee)
 
         sql = "SELECT * FROM job_assignment"
         if filters:
@@ -1988,7 +2124,7 @@ def jobs():
         viewers = [r['username'] for r in cur.fetchall()]
 
     else:
-        # viewer: only their own + compute days_remaining
+        # viewer: only theirs + days_remaining
         cur.execute("""
           SELECT * FROM job_assignment
            WHERE assigned_to = %s
@@ -1996,56 +2132,172 @@ def jobs():
         """, (session['username'],))
         rows = cur.fetchall()
         today = date.today()
-
         jobs = []
         for r in rows:
-            job = dict(r)   # convert RealDictRow → mutable dict
+            job = dict(r)
             due = job.get('due_date')
             job['days_remaining'] = (due - today).days if due else None
             jobs.append(job)
-
         viewers = []
+        search = status_f = assignee = None
 
     conn.close()
     return render_template('jobs.html',
         jobs=jobs,
         viewers=viewers,
-        search=search    if session.get('role')=='admin' else '',
-        status_f=status_f if session.get('role')=='admin' else 'All',
-        assignee=assignee if session.get('role')=='admin' else 'All',
+        search=search, status_f=status_f, assignee=assignee
     )
+
 
 
 @app.route('/jobs/<int:job_id>/complete', methods=['POST'])
 def complete_job(job_id):
-    # 1) Must be a logged‐in viewer
     if 'username' not in session or session.get('role') != 'viewer':
         return redirect(url_for('login'))
 
     conn, cur = get_db_cursor()
-    # 2) Ensure they own this job
+    # ensure ownership
     cur.execute("SELECT assigned_to FROM job_assignment WHERE id = %s", (job_id,))
     row = cur.fetchone()
     if not row or row['assigned_to'] != session['username']:
         conn.close()
-        flash("You’re not allowed to complete that job.", "error")
+        flash("❌ You can’t complete this job.", "error")
         return redirect(url_for('jobs'))
 
-    # 3) Mark it complete
-    cur.execute("UPDATE job_assignment SET status = 'completed' WHERE id = %s", (job_id,))
+    # mark done
+    cur.execute("UPDATE job_assignment SET status='completed' WHERE id=%s", (job_id,))
     conn.commit()
     conn.close()
 
-    flash("Job marked as completed!", "success")
+    flash("✅ Job marked completed!", "success")
     return redirect(url_for('jobs'))
 
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from flask import (
-    render_template, request, session, redirect,
-    url_for, flash, abort
-)
-# … your other imports …
+
+# # … your other imports …
+
+# import json
+# from flask import abort, flash, redirect, render_template, request, session, url_for
+
+# # reuse your existing CHECKLIST
+# CHECKLIST = [
+#     ("Outside Checks", [
+#         "Lights", "Steps/Hand Rails", "Tires/Tracks",
+#         "Exhaust", "Fenders", "Bucket", "Cutting Edge/Teeth",
+#         "Lifting Mechanism", "Hoses", "Fittings Greased",
+#         "Hitch/Coupler", "Wipers",
+#     ]),
+#     ("Engine Compartment", [
+#         "Battery Cable", "Fan Belt", "Hoses",
+#         "Air Filter", "Guards",
+#     ]),
+#     ("Inside Cab", [
+#         "Brakes, Service", "Brakes, Parking",
+#         "Backup Alarm", "Fire Extinguisher",
+#         "Gauges", "Horn", "Hydraulic Controls",
+#     ]),
+#     ("Fluids", [
+#         "Visible Leaks", "Oil Level/Pressure",
+#         "Coolant Level", "Hydraulic Oil Level",
+#         "Transmission Fluid Level", "Fuel Level",
+#     ]),
+# ]
+
+# # Top-level fields we want to display before the checklist:
+# TOP_FIELDS = [
+#     ("Date",                    "date"),
+#     ("Inspector",               "inspector"),
+#     ("Explanation of Defects",  "defects"),
+#     ("Operator Signature",      "operator_signature"),
+#     ("Mechanic Signature",      "mechanic_signature"),
+# ]
+
+# @app.route('/jobs/<int:job_id>/fill', methods=['GET','POST'])
+# def fill_job(job_id):
+#     if 'username' not in session:
+#         return redirect(url_for('login'))
+
+#     conn, cur = get_db_cursor()
+#     cur.execute("SELECT * FROM job_assignment WHERE id=%s", (job_id,))
+#     job = cur.fetchone()
+#     conn.close()
+
+#     # only assigned user, only once
+#     if not job or job['assigned_to'] != session['username']:
+#         abort(403)
+#     if job['status'] != 'pending':
+#         flash("You already submitted this job.", "info")
+#         return redirect(url_for('jobs'))
+
+#     # pick the correct form template
+#     mapping = {
+#       'Planned Maintenance':   'maintenance_form.html',
+#       'Predective Maintenance': 'maintenance_form.html',
+#       'Inspection':            'inspection_form.html',
+#       'Repair':                'repair_form.html',
+#       'Full OverAll':          'repair_form.html',
+#     }
+#     tmpl = mapping.get(job['title'])
+#     if not tmpl:
+#         abort(400, "Unknown job type")
+
+#     if request.method == 'GET':
+#         return render_template(tmpl, job=job, checklist=CHECKLIST)
+
+#     # POST: gather everything
+#     data = request.form.to_dict()
+
+#     conn, cur = get_db_cursor()
+#     # insert the submission
+#     cur.execute("""
+#       INSERT INTO job_submissions
+#         (job_id, submitted_by, data, submitted_at)
+#       VALUES (%s, %s, %s, NOW())
+#     """, (
+#       job_id,
+#       session['username'],
+#       json.dumps(data),
+#     ))
+#     # mark job done
+#     cur.execute("UPDATE job_assignment SET status='completed' WHERE id=%s", (job_id,))
+#     conn.commit()
+#     conn.close()
+
+#     flash("✅ Submission recorded and job marked completed.", "success")
+#     return redirect(url_for('jobs'))
+
+# @app.route('/jobs/<int:job_id>/submissions')
+# def view_submissions(job_id):
+#     if session.get('role') != 'admin':
+#         abort(403)
+
+#     conn, cur = get_db_cursor()
+#     # fetch the job for title/ID
+#     cur.execute("SELECT * FROM job_assignment WHERE id=%s", (job_id,))
+#     job = cur.fetchone()
+
+#     # fetch all submissions
+#     cur.execute("""
+#       SELECT submitted_by, submitted_at, data
+#       FROM job_submissions
+#       WHERE job_id=%s
+#       ORDER BY submitted_at DESC
+#     """, (job_id,))
+#     subs = cur.fetchall()
+#     conn.close()
+
+#     # ensure each data is a dict
+#     for s in subs:
+#         if isinstance(s['data'], (str, bytes)):
+#             s['data'] = json.loads(s['data'])
+
+#     return render_template(
+#       'job_submissions.html',
+#       job=job,
+#       submissions=subs,
+#       checklist=CHECKLIST,
+#       top_fields=TOP_FIELDS
+#     )
+
 
 @app.route('/update_stock', methods=['GET', 'POST'])
 def update_stock():
@@ -2119,6 +2371,244 @@ def update_stock():
     conn.close()
     flash("Stock updated successfully.", "success")
     return redirect(url_for('dashboard'))
+
+
+from werkzeug.security import generate_password_hash
+
+import json
+from flask import (
+    abort, flash, redirect, render_template, request, session, url_for
+)
+from werkzeug.security import generate_password_hash, check_password_hash
+
+# … your existing imports & get_db_cursor, etc …
+
+from flask import abort, flash, redirect, render_template, request, session, url_for
+from werkzeug.security import generate_password_hash
+
+def get_current_user_id():
+    return session.get('user_id')
+
+@app.route('/users', methods=['GET', 'POST'])
+def manage_users():
+    if session.get('role') != 'admin':
+        abort(403)
+
+    # POST = create new user
+    if request.method == 'POST':
+        username = request.form['username'].strip()
+        password = request.form['password']
+        role     = request.form['role']
+        email    = request.form['email'].strip()
+
+        if not username or not password or role not in ('admin','viewer') or not email:
+            flash("Please fill in all fields correctly.", "error")
+            return redirect(url_for('manage_users'))
+
+        pw_hash = generate_password_hash(password)
+        conn, cur = get_db_cursor()
+        try:
+            cur.execute("""
+                INSERT INTO users (username, password, role, email, is_active)
+                VALUES (%s, %s, %s, %s, TRUE)
+            """, (username, pw_hash, role, email))
+            conn.commit()
+            flash(f"User “{username}” created.", "success")
+        except Exception as e:
+            conn.rollback()
+            flash(f"Could not create user: {e}", "error")
+        finally:
+            conn.close()
+
+        return redirect(url_for('manage_users'))
+
+    # GET = list users
+    conn, cur = get_db_cursor()
+    cur.execute("""
+      SELECT id, username, role, email, is_active
+        FROM users
+    ORDER BY username
+    """)
+    users = cur.fetchall()
+    conn.close()
+
+    return render_template('manage_users.html', users=users)
+
+@app.route('/users/<int:user_id>/deactivate', methods=['POST'])
+def deactivate_user(user_id):
+    if session.get('role')!='admin':
+        abort(403)
+    if user_id == get_current_user_id():
+        flash("❌ You cannot disable your own account.", "warning")
+        return redirect(url_for('manage_users'))
+
+    conn, cur = get_db_cursor()
+    cur.execute("UPDATE users SET is_active=FALSE WHERE id=%s", (user_id,))
+    conn.commit(); conn.close()
+    flash("User disabled successfully.", "success")
+    return redirect(url_for('manage_users'))
+
+@app.route('/users/<int:user_id>/activate', methods=['POST'])
+def activate_user(user_id):
+    if session.get('role')!='admin':
+        abort(403)
+    conn, cur = get_db_cursor()
+    cur.execute("UPDATE users SET is_active=TRUE WHERE id=%s", (user_id,))
+    conn.commit(); conn.close()
+    flash("User re-activated successfully.", "success")
+    return redirect(url_for('manage_users'))
+
+
+@app.route('/users/<int:user_id>/edit', methods=['GET', 'POST'])
+def edit_user(user_id):
+    if session.get('role')!='admin':
+        abort(403)
+
+    conn, cur = get_db_cursor()
+    cur.execute("SELECT id, username, role, email FROM users WHERE id = %s", (user_id,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        abort(404)
+
+    if request.method == 'POST':
+        new_email = request.form['email'].strip()
+        new_pass  = request.form.get('password','').strip()
+
+        try:
+            if new_pass:
+                pw_hash = generate_password_hash(new_pass)
+                cur.execute("""
+                  UPDATE users
+                    SET email = %s,
+                        password = %s
+                  WHERE id = %s
+                """, (new_email, pw_hash, user_id))
+            else:
+                cur.execute("""
+                  UPDATE users
+                    SET email = %s
+                  WHERE id = %s
+                """, (new_email, user_id))
+
+            conn.commit()
+            flash(f"Updated “{user['username']}”.", "success")
+        except Exception as e:
+            conn.rollback()
+            flash(f"Could not update user: {e}", "error")
+
+        conn.close()
+        return redirect(url_for('manage_users'))
+
+    conn.close()
+    return render_template('edit_user.html', user=user)
+
+
+@app.route('/admin/users/<int:user_id>/change_password', methods=['GET','POST'])
+def change_password(user_id):
+    if session.get('role') != 'admin':
+        abort(403)
+
+    conn, cur = get_db_cursor()
+    cur.execute("SELECT id, username, role, email FROM users WHERE id=%s", (user_id,))
+    user = cur.fetchone()
+    if not user:
+        conn.close()
+        abort(404)
+
+    if request.method == 'POST':
+        new_pw = request.form.get('new_password','').strip()
+        confirm = request.form.get('confirm_password','').strip()
+        if not new_pw:
+            flash("Password cannot be blank.", "error")
+        elif new_pw != confirm:
+            flash("Passwords do not match.", "error")
+        else:
+            hashed = generate_password_hash(new_pw)
+            cur.execute("UPDATE users SET password=%s WHERE id=%s",
+                        (hashed, user_id))
+            conn.commit()
+            conn.close()
+            flash(f"Password for {user['username']} updated.", "success")
+            return redirect(url_for('manage_users'))
+
+    conn.close()
+    return render_template('change_password.html', user=user)
+
+
+from datetime import date, timedelta
+from flask import abort, flash, redirect, render_template, request, session, url_for
+
+
+@app.route('/users/<username>/locations')
+@login_required
+def view_user_locations(username):
+    if session.get('role') != 'admin':
+        abort(403)
+
+    # 1) determine which date to show
+    today = date.today()
+    # allow ?date=YYYY-MM-DD; if missing or invalid, default to today
+    ds = request.args.get('date')
+    try:
+        selected = date.fromisoformat(ds) if ds else today
+    except ValueError:
+        return redirect(url_for('view_user_locations', username=username))
+
+    # restrict to only the last 10 days
+    if not (today - timedelta(days=29) <= selected <= today):
+        return redirect(url_for('view_user_locations', username=username))
+
+    # 2) pull only that day’s points
+    conn, cur = get_db_cursor()
+    cur.execute("""
+      SELECT latitude, longitude, logged_at
+        FROM user_locations
+       WHERE username = %s
+         AND DATE(logged_at) = %s
+       ORDER BY logged_at DESC
+    """, (username, selected))
+    points = cur.fetchall()
+    conn.close()
+
+    # 3) compute date‐picker bounds
+    mind = (today - timedelta(days=29)).isoformat()
+    maxd = today.isoformat()
+
+    return render_template(
+      'user_locations.html',
+      username=username,
+      points=points,
+      selected_date=selected.isoformat(),
+      min_date=mind,
+      max_date=maxd
+    )
+
+
+
+
+from flask import request, jsonify
+
+@app.route('/api/location', methods=['POST'])
+@login_required
+def save_location():
+    # NOTE: make sure your user_locations table has columns:
+    #   username (text), latitude (float), longitude (float), logged_at (timestamp default now())
+    data = request.get_json()
+    lat = data.get('latitude')
+    lon = data.get('longitude')
+    if lat is None or lon is None:
+        return jsonify({"error":"bad payload"}), 400
+
+    conn, cur = get_db_cursor()
+    cur.execute("""
+      INSERT INTO user_locations(username, latitude, longitude, logged_at)
+      VALUES (%s,%s,%s,NOW())
+    """, (session['username'], lat, lon))
+    conn.commit()
+    conn.close()
+    return jsonify({"status":"ok"}), 201
+
 
 
 if __name__ == '__main__':

@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-4xl mx-auto py-8 space-y-6">
+
+  <h2 class="text-3xl font-extrabold text-gray-800 flex items-center gap-2">
+    <span class="text-2xl">📍</span> Login Locations for <span class="text-indigo-600">{{ username }}</span>
+  </h2>
+
+  <!-- Controls Card -->
+  <div class="bg-white shadow-lg rounded-lg p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <label for="datePicker" class="font-medium text-gray-700 whitespace-nowrap">
+        Show date:
+      </label>
+      <input 
+        type="date" 
+        id="datePicker"
+        min="{{ min_date }}" 
+        max="{{ max_date }}"
+        value="{{ selected_date }}"
+        class="border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+      />
+    </div>
+    <p class="text-sm text-gray-500">
+      Select any date in the last 30 days to view that day’s login locations.
+    </p>
+  </div>
+
+  <!-- Map Card -->
+  <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+    <div id="map" class="w-full h-96"></div>
+  </div>
+
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+  // date-picker reload
+  document.getElementById('datePicker').addEventListener('change', function(){
+    const d = this.value;
+    const url = new URL(window.location.href);
+    url.searchParams.set('date', d);
+    window.location = url;
+  });
+
+  // initialize Leaflet map
+  const points = {{ points|tojson }};
+  const map = L.map('map').setView(
+    points.length 
+      ? [points[0].latitude, points[0].longitude] 
+      : [20,0],
+    points.length ? 12 : 2
+  );
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  // plot markers
+  points.forEach(p => {
+    L.marker([p.latitude, p.longitude])
+      .addTo(map)
+      .bindPopup(`<strong>${new Date(p.logged_at).toLocaleString()}</strong>`);
+  });
+</script>
+{% endblock %}
