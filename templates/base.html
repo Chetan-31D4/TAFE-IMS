@@ -121,7 +121,17 @@
             {% endif %}
           </div>
         </div>
+        
+        {% if session.role=='admin' %}
+          <a href="{{ url_for('attendance_summary') }}"
+            class="...">📆 Attendance</a>
+        {% endif %}
 
+        {% if session.role=='viewer' %}
+          <a href="{{ url_for('attendance_detail', username=session.username) }}"
+            class="...">📆 My Attendance</a>
+        {% endif %}
+        
         <!-- User & Logout -->
         <div class="flex items-center space-x-4">
           <span class="text-sm text-gray-600 uppercase">

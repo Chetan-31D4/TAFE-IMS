@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="min-h-screen bg-gray-50 py-8">
+  <div class="max-w-7xl mx-auto px-4 space-y-6">
+
+    <!-- Header + Date Filters (unchanged) -->
+    <div class="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-lg shadow flex flex-col sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-extrabold">📆 Attendance Overview</h1>
+        <p class="mt-1 text-indigo-200">Showing <strong>{{ start_date }}</strong> to <strong>{{ end_date }}</strong></p>
+      </div>
+      <div class="flex gap-4 mt-4 sm:mt-0">
+        <div class="flex flex-col">
+          <label for="startDate" class="text-sm font-medium text-white mb-1">From</label>
+          <input id="startDate" type="date"
+                 value="{{ start_date }}" min="{{ min_date }}" max="{{ max_date }}"
+                 class="bg-white text-gray-800 rounded-md shadow-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300"/>
+        </div>
+        <div class="flex flex-col">
+          <label for="endDate" class="text-sm font-medium text-white mb-1">To</label>
+          <input id="endDate" type="date"
+                 value="{{ end_date }}" min="{{ min_date }}" max="{{ max_date }}"
+                 class="bg-white text-gray-800 rounded-md shadow-sm px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- Attendance Table -->
+    <div class="bg-white rounded-lg shadow overflow-x-auto">
+      <table id="attendanceTable" class="min-w-full table-fixed">
+        <colgroup>
+          <col style="width:25%"/>
+          {% set rem = 75.0 / dates|length %}
+          {% for _ in dates %}
+            <col style="width:{{ rem }}%"/>
+          {% endfor %}
+        </colgroup>
+        <thead class="bg-gray-100">
+          <tr class="sticky top-0">
+            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-600 uppercase">User</th>
+            {% for d in dates %}
+            <th class="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+              <div>{{ d.strftime("%a") }}</div>
+              <div class="font-semibold">{{ d.strftime("%d %b") }}</div>
+            </th>
+            {% endfor %}
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-200">
+          {% for u in users %}
+          <tr class="hover:bg-indigo-50">
+            <td class="px-6 py-4 font-medium text-gray-800 whitespace-nowrap">{{ u.username }}</td>
+            {% for d in dates %}
+            <td class="px-2 py-4">
+              {% set key = snapshot_map[u.id].get(d) %}
+              {% if d in attendance_map[u.id] %}
+                <div class="flex items-center justify-center space-x-2">
+                  <span class="w-6 h-6 flex items-center justify-center bg-green-100 text-green-800 rounded-full">
+                    ✓
+                  </span>
+                  {% if key %}
+                  <a href="{{ url_for('download_r2_object', key=key) }}"
+                     target="_blank"
+                     class="text-xl text-gray-600 hover:text-gray-800"
+                     title="View snapshot">📸</a>
+                  {% endif %}
+                </div>
+              {% else %}
+                <span class="w-6 h-6 flex items-center justify-center bg-red-100 text-red-600 rounded-full">
+                  —
+                </span>
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+<!-- DataTables + init without pagination -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+<script>
+  $(function(){
+    $('#attendanceTable').DataTable({
+      paging:       false,   // ← disable pagination
+      searching:    true,
+      info:         false,
+      ordering:     false,
+      lengthChange: false,
+      scrollX:      true,
+      dom:          't'      // only display the table
+    });
+
+    function reloadRange(){
+      const s = $('#startDate').val(),
+            e = $('#endDate').val(),
+            url = new URL(window.location.href);
+      if (s) url.searchParams.set('start', s);
+      if (e) url.searchParams.set('end',   e);
+      window.location = url;
+    }
+    $('#startDate, #endDate').on('change', reloadRange);
+  });
+</script>
+{% endblock %}

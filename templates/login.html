@@ -8,66 +8,101 @@
 </head>
 <body class="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
 
-  <div class="w-full max-w-md p-8 bg-white rounded-xl shadow-lg">
-    <!-- TAFE Logo -->
-    <div class="flex justify-center mb-6">
+  <div class="w-full max-w-md p-8 bg-white rounded-xl shadow-lg space-y-6">
+    <!-- Logo -->
+    <div class="flex justify-center">
       <img src="{{ url_for('static', filename='images/TAFE-Logo.jpg') }}"
-           alt="TAFE Logo"
-           class="h-16 w-auto"/>
+           alt="TAFE Logo" class="h-16 w-auto"/>
+    </div>
+    <h1 class="text-center text-2xl font-bold text-gray-800">Welcome Back</h1>
+    <p class="text-center text-sm text-gray-500">Please log in to continue</p>
+
+    <!-- live camera preview & snap button -->
+    <div class="relative">
+      <video id="camera" autoplay playsinline
+             class="w-full h-40 rounded-lg object-cover border-2 border-gray-200"></video>
+      <!-- dark overlay + spinner while initializing -->
+      <div id="cameraOverlay"
+           class="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-30 text-white space-y-2 transition-opacity">
+        <svg class="w-8 h-8 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor"
+                d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        <span>Initializing camera…</span>
+      </div>
+      <!-- snap button (hidden until camera live) -->
+      <button id="snapBtn"
+              class="absolute bottom-2 left-1/2 -translate-x-1/2 bg-white p-2 rounded-full shadow-lg hidden hover:bg-gray-100 transition">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-700" fill="currentColor"
+             viewBox="0 0 20 20">
+          <path d="M4 5h3l2-2h2l2 2h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1z"/>
+        </svg>
+      </button>
     </div>
 
-    <h1 class="text-center text-2xl font-bold text-gray-800 mb-2">Welcome Back</h1>
-    <p class="text-center text-sm text-gray-500 mb-6">Please log in to continue</p>
-
-    <form id="loginForm" action="{{ url_for('login') }}" method="POST" class="space-y-6">
-      <input type="hidden" name="latitude" id="latitude">
+    <form id="loginForm"
+          action="{{ url_for('login') }}"
+          method="POST"
+          enctype="multipart/form-data"
+          class="space-y-4">
+      <!-- hidden fields -->
+      <input type="hidden" name="latitude"  id="latitude">
       <input type="hidden" name="longitude" id="longitude">
+      <input type="file"   name="snapshot"  id="snapshot" accept="image/png, image/jpeg" hidden>
 
-      <!-- Username Field -->
+      <!-- Username -->
       <div>
-        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
+          Username
+        </label>
         <div class="relative">
           <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-            <!-- user icon -->
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor"
+                 viewBox="0 0 20 20">
               <path fill-rule="evenodd"
-                    d="M10 2a5 5 0 100 10 5 5 0 000-10zm-7 14a7 7 0 0114 0H3z"
+                    d="M10 2a5 5 0 100 10A5 5 0 0010 2zM2 18a8 8 0 0116 0H2z"
                     clip-rule="evenodd"/>
             </svg>
           </span>
           <input id="username" name="username" type="text" required
-                 class="block w-full pl-10 pr-4 py-2 rounded-md border border-gray-300 shadow-sm placeholder-gray-400
+                 class="block w-full pl-10 pr-4 py-2 rounded-md border border-gray-300
                         focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 transition"/>
         </div>
       </div>
 
-      <!-- Password Field -->
+      <!-- Password -->
       <div>
-        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+          Password
+        </label>
         <div class="relative">
           <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-gray-400">
-            <!-- lock icon -->
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="currentColor"
+                 viewBox="0 0 20 20">
               <path fill-rule="evenodd"
                     d="M5 8V6a5 5 0 1110 0v2h1a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1v-8a1 1 0 011-1h1zm2-2a3 3 0 116 0v2H7V6z"
                     clip-rule="evenodd"/>
             </svg>
           </span>
           <input id="password" name="password" type="password" required
-                 class="block w-full pl-10 pr-10 py-2 rounded-md border border-gray-300 shadow-sm placeholder-gray-400
+                 class="block w-full pl-10 pr-10 py-2 rounded-md border border-gray-300
                         focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 transition"/>
           <button type="button" id="togglePass"
                   class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 focus:outline-none">
-            <!-- eye icon -->
-            <svg id="eyeOpen" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
-                 fill="currentColor">
+            <svg id="eyeOpen" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5"
+                 fill="currentColor" viewBox="0 0 20 20">
               <path d="M10 3C6 3 2.73 5.11 1 8c1.73 2.89 5 5 9 5s7.27-2.11 9-5c-1.73-2.89-5-5-9-5z"/>
               <path d="M10 13a5 5 0 100-10 5 5 0 000 10z"/>
             </svg>
-            <svg id="eyeClosed" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden" viewBox="0 0 20 20"
-                 fill="currentColor">
+            <svg id="eyeClosed" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 hidden"
+                 fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd"
-                    d="M3.293 3.293a1 1 0 011.414 0l11 11a1 1 0 01-1.414 1.414l-1.743-1.743A9.027 9.027 0 0110 15c-4 0-7.27-2.11-9-5a8.955 8.955 0 012.536-3.572L3.293 4.707a1 1 0 010-1.414zM7.168 7.168A3 3 0 0010 11a3 3 0 003-3c0-.411-.083-.801-.232-1.162l1.45-1.45A4.962 4.962 0 0115 8a5 5 0 00-9.996-.2A4.98 4.98 0 015.732 6.018l1.436 1.15z"
+                    d="M3.293 3.293a1 1 0 011.414 0l11 11a1 1 0 01-1.414 1.414l-1.743-1.743A9.027 9.027 0 0110 15c-4 0-7.27-2.11-9-5a8.955 8.955 0 012.536-3.572L3.293 4.707a1 1 0 010-1.414z"
+                    clip-rule="evenodd"/>
+              <path fill-rule="evenodd"
+                    d="M7.168 7.168A3 3 0 0010 11a3 3 0 003-3c0-.411-.083-.801-.232-1.162l1.45-1.45A4.962 4.962 0 0115 8a5 5 0 00-9.996-.2A4.98 4.98 0 015.732 6.018l1.436 1.15z"
                     clip-rule="evenodd"/>
             </svg>
           </button>
@@ -88,47 +123,75 @@
     </form>
 
     <p id="locMessage" class="mt-4 text-center text-sm text-red-600">
-      🔒 We need your location to proceed.
+      🔒 Location & camera access are required.
     </p>
   </div>
 
   <script>
-    const submitBtn = document.getElementById('submitBtn');
-    const latInput  = document.getElementById('latitude');
-    const lngInput  = document.getElementById('longitude');
-    const msg       = document.getElementById('locMessage');
-    const toggle    = document.getElementById('togglePass');
-    const pwd       = document.getElementById('password');
-    const eyeOpen   = document.getElementById('eyeOpen');
-    const eyeClosed = document.getElementById('eyeClosed');
+    const submitBtn  = document.getElementById('submitBtn'),
+          latInput   = document.getElementById('latitude'),
+          lngInput   = document.getElementById('longitude'),
+          snapInput  = document.getElementById('snapshot'),
+          msg        = document.getElementById('locMessage'),
+          camOverlay = document.getElementById('cameraOverlay'),
+          video      = document.getElementById('camera'),
+          snapBtn    = document.getElementById('snapBtn'),
+          toggle     = document.getElementById('togglePass'),
+          pwd        = document.getElementById('password'),
+          eyeOpen    = document.getElementById('eyeOpen'),
+          eyeClosed  = document.getElementById('eyeClosed');
 
-    // Geolocation
-    window.addEventListener('DOMContentLoaded', () => {
-      if (!navigator.geolocation) {
-        msg.textContent = "❌ Geolocation not supported by your browser.";
-        return;
-      }
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          latInput.value = pos.coords.latitude;
-          lngInput.value = pos.coords.longitude;
-          submitBtn.disabled = false;
-          msg.textContent     = "";
-        },
-        err => {
-          msg.textContent = "❌ Location access is required to use this app.";
-        }
-      );
+    // toggle password
+    toggle.addEventListener('click', () => {
+      const isText = pwd.type === 'text';
+      pwd.type = isText ? 'password' : 'text';
+      eyeOpen.classList.toggle('hidden', !isText);
+      eyeClosed.classList.toggle('hidden', isText);
     });
 
-    // Toggle password visibility
-    toggle.addEventListener('click', () => {
-      const showing = pwd.type === 'text';
-      pwd.type = showing ? 'password' : 'text';
-      eyeOpen.classList.toggle('hidden', !showing);
-      eyeClosed.classList.toggle('hidden', showing);
+    // init geolocation + camera
+    Promise.all([
+      new Promise((res, rej) => {
+        if (!navigator.geolocation) return rej();
+        navigator.geolocation.getCurrentPosition(
+          pos => {
+            latInput.value = pos.coords.latitude;
+            lngInput.value = pos.coords.longitude;
+            res();
+          },
+          () => rej()
+        );
+      }),
+      navigator.mediaDevices.getUserMedia({ video: true }).then(stream => {
+        video.srcObject = stream;
+        return new Promise(r => setTimeout(r, 500));
+      })
+    ])
+    .then(() => {
+      // show snap button
+      camOverlay.classList.add('opacity-0');
+      setTimeout(() => camOverlay.remove(), 300);
+      snapBtn.classList.remove('hidden');
+    })
+    .catch(() => {
+      msg.textContent = "❌ Location & camera access are required.";
+    });
+
+    // user clicks to take snapshot
+    snapBtn.addEventListener('click', () => {
+      const canvas = document.createElement('canvas');
+      canvas.width  = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext('2d').drawImage(video, 0, 0);
+      canvas.toBlob(blob => {
+        const file = new File([blob], "snapshot.png", { type: "image/png" });
+        const dt   = new DataTransfer();
+        dt.items.add(file);
+        snapInput.files = dt.files;
+        submitBtn.disabled = false;
+        snapBtn.remove();            // one-time snap
+      });
     });
   </script>
-
 </body>
 </html>

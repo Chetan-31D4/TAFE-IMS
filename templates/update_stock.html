@@ -3,6 +3,14 @@
 <div class="max-w-4xl mx-auto py-6" x-data="{ filter: '' }">
   <h2 class="text-2xl font-bold mb-4">🛠️ Update Stock (Damage/Removal)</h2>
 
+
+  <div class="flex justify-end mb-4">
+    <a href="{{ url_for('download_current_stock') }}"
+       class="inline-flex items-center bg-green-600 hover:bg-green-700 text-white
+              text-sm font-medium px-4 py-2 rounded transition">
+      📥 Download Current Stock
+    </a>
+  </div>
   <!-- Search Bar -->
   <div class="mb-4">
     <input

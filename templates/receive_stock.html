@@ -4,78 +4,86 @@
   <h2 class="text-3xl font-semibold mb-6 text-gray-800">📥 Receive New Stock</h2>
 
   <form method="POST" enctype="multipart/form-data" class="space-y-8">
-    <!-- Top Controls: Invoice & Search -->
+    <!-- ── Top: invoice dropzone & search ── -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-      <!-- Invoice Upload Dropzone -->
-      <label id="invoiceDropzone" for="invoice" class="group flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 transition-colors">
-        <input
-          type="file"
-          id="invoice"
-          name="invoice"
-          accept=".pdf"
-          required
-          class="hidden"
-        />
+      <!-- Invoice upload -->
+      <label id="invoiceDropzone" for="invoice"
+             class="group flex flex-col items-center justify-center h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer
+                    hover:border-green-500 transition-colors">
+        <input type="file" id="invoice" name="invoice" accept=".pdf" required class="hidden"/>
         <div class="text-center">
-          <p class="text-gray-500 group-hover:text-green-600 transition-colors">Drag & drop PDF here, or click to browse</p>
-          <p class="text-xs text-gray-400">Only .pdf files allowed</p>
+          <p class="text-gray-500 group-hover:text-green-600 transition">Drag & drop PDF here, or click to browse</p>
+          <p class="text-xs text-gray-400">Only .pdf files</p>
           <p id="invoiceFilename" class="text-sm text-gray-600 mt-2"></p>
         </div>
       </label>
 
-      <!-- Product Search -->
-      <div>
-        <input
-          id="stockSearch"
-          type="text"
-          placeholder="Search products by name…"
-          class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 transition"
-        />
-      </div>
+      <!-- Product search -->
+      <input id="stockSearch"
+             type="text"
+             placeholder="Search products…"
+             class="w-full border border-gray-300 rounded-lg px-4 py-2 text-sm text-gray-700
+                    focus:outline-none focus:ring-2 focus:ring-green-500 transition"/>
     </div>
 
-    <!-- Products Table -->
+    <!-- ── Products table with qty + quality ── -->
     <div class="overflow-x-auto rounded-lg border border-gray-200">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
             <th class="sticky top-0 px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Product</th>
-            <th class="sticky top-0 px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Current Qty</th>
-            <th class="sticky top-0 px-6 py-3 text-left text-xs font-medium text-gray-600 uppercase">Receive Qty</th>
+            <th class="sticky top-0 px-6 py-3 text-center text-xs font-medium text-gray-600 uppercase">Current Qty</th>
+            <th class="sticky top-0 px-6 py-3 text-center text-xs font-medium text-gray-600 uppercase">Receive Qty</th>
+            <th class="sticky top-0 px-6 py-3 text-center text-xs font-medium text-gray-600 uppercase">Quality</th>
           </tr>
         </thead>
         <tbody id="stockTableBody" class="bg-white divide-y divide-gray-100">
           {% for p in products %}
           <tr class="odd:bg-white even:bg-gray-50 hover:bg-green-50 transition-colors">
             <td class="px-6 py-4 text-sm font-medium text-gray-800">{{ p.name }}</td>
-            <td class="px-6 py-4 text-sm text-gray-600">{{ p.quantity }}</td>
-            <td class="px-6 py-4">
+            <td class="px-6 py-4 text-sm text-gray-600 text-center">{{ p.quantity }}</td>
+
+            <!-- qty input -->
+            <td class="px-6 py-4 text-center">
               <input
                 type="number"
                 name="qty_{{ p.id }}"
                 min="0"
                 value="0"
-                class="w-24 border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-green-500 transition"
+                class="w-20 border border-gray-300 rounded-md px-2 py-1 text-sm text-center
+                       focus:outline-none focus:ring-1 focus:ring-green-500 transition"
               />
+            </td>
+
+            <!-- quality dropdown -->
+            <td class="px-6 py-4 text-center">
+              <select name="quality_{{ p.id }}"
+                      class="border border-gray-300 rounded-md px-2 py-1 text-sm
+                             focus:outline-none focus:ring-1 focus:ring-green-500 transition">
+                <option value="genuine">Genuine</option>
+                <option value="local">Local</option>
+              </select>
             </td>
           </tr>
           {% else %}
           <tr>
-            <td colspan="3" class="px-6 py-4 text-center text-gray-400 italic">No products found.</td>
+            <td colspan="4" class="px-6 py-4 text-center text-gray-400 italic">No products found.</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
 
-    <!-- Submit Button -->
+    <!-- ── Save button ── -->
     <div class="flex justify-end">
-      <button
-        type="submit"
-        class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold px-6 py-3 rounded-lg shadow-md transition-all"
-      >
+      <button type="submit"
+              class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white font-semibold 
+                     px-6 py-3 rounded-lg shadow-md transition-all">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-          <path fill-rule="evenodd" d="M10 5a1 1 0 01.707.293l3 3a1 1 0 01-1.414 1.414L11 8.414V15a1 1 0 11-2 0V8.414L7.707 9.707a1 1 0 01-1.414-1.414l3-3A1 1 0 0110 5z" clip-rule="evenodd" />
+          <path fill-rule="evenodd"
+                d="M10 5a1 1 0 01.707.293l3 3a1 1 0 01-1.414 1.414L11 8.414V15a1 1 0 11-2 0V8.414L7.707
+                   9.707a1 1 0 01-1.414-1.414l3-3A1 1 0 0110 5z"
+                clip-rule="evenodd" />
         </svg>
         Save Received Stock
       </button>
@@ -84,57 +92,58 @@
 </div>
 
 <script>
-  // File name display and drag & drop
-  const invoiceInput = document.getElementById('invoice');
-  const invoiceFilename = document.getElementById('invoiceFilename');
-  const dropzone = document.getElementById('invoiceDropzone');
+  // — file name display + drag & drop styling
+  const invoiceInput    = document.getElementById('invoice'),
+        invoiceFilename = document.getElementById('invoiceFilename'),
+        dropzone        = document.getElementById('invoiceDropzone');
 
   invoiceInput.addEventListener('change', () => {
     const file = invoiceInput.files[0];
     invoiceFilename.textContent = file ? file.name : '';
   });
 
-  ['dragenter', 'dragover'].forEach(evt => {
-    dropzone.addEventListener(evt, e => {
-      e.preventDefault();
-      dropzone.classList.add('border-green-500', 'bg-green-50');
-    });
-  });
-  ['dragleave', 'drop'].forEach(evt => {
-    dropzone.addEventListener(evt, e => {
-      e.preventDefault();
-      dropzone.classList.remove('border-green-500', 'bg-green-50');
-    });
-  });
-  dropzone.addEventListener('drop', e => {
-    e.preventDefault();
-    if (e.dataTransfer.files.length) {
-      invoiceInput.files = e.dataTransfer.files;
-      invoiceFilename.textContent = e.dataTransfer.files[0].name;
+  ['dragenter','dragover'].forEach(e =>
+    dropzone.addEventListener(e, evt => {
+      evt.preventDefault();
+      dropzone.classList.add('border-green-500','bg-green-50');
+    })
+  );
+  ['dragleave','drop'].forEach(e =>
+    dropzone.addEventListener(e, evt => {
+      evt.preventDefault();
+      dropzone.classList.remove('border-green-500','bg-green-50');
+    })
+  );
+  dropzone.addEventListener('drop', evt => {
+    evt.preventDefault();
+    if (evt.dataTransfer.files.length) {
+      invoiceInput.files = evt.dataTransfer.files;
+      invoiceFilename.textContent = evt.dataTransfer.files[0].name;
     }
   });
 
-  // Live search on product name
-  document.getElementById('stockSearch').addEventListener('input', function(e) {
-    const filter = e.target.value.toLowerCase();
-    let anyVisible = false;
+  // — live search on product name
+  document.getElementById('stockSearch').addEventListener('input', function(evt){
+    const filter = evt.target.value.toLowerCase();
+    let any = false;
     document.querySelectorAll('#stockTableBody tr').forEach(row => {
-      const name = row.cells[0].innerText.toLowerCase();
-      const show = name.includes(filter);
+      const txt = row.cells[0].innerText.toLowerCase();
+      const show = txt.includes(filter);
       row.style.display = show ? '' : 'none';
-      if (show) anyVisible = true;
+      any ||= show;
     });
-    const tableBody = document.getElementById('stockTableBody');
-    const noRow = tableBody.querySelector('.no-results');
-    if (!anyVisible) {
-      if (!noRow) {
-        tableBody.insertAdjacentHTML('beforeend',
-          `<tr class="no-results"><td colspan="3" class="px-6 py-4 text-center text-gray-400 italic">No products match your search.</td></tr>`
+    const no = document.querySelector('.no-results');
+    if (!any && !no) {
+      document.getElementById('stockTableBody')
+        .insertAdjacentHTML('beforeend',
+          `<tr class="no-results">
+             <td colspan="4" class="px-6 py-4 text-center text-gray-400 italic">
+               No products match your search.
+             </td>
+           </tr>`
         );
-      }
-    } else if (noRow) {
-      noRow.remove();
     }
+    else if (any && no) no.remove();
   });
 </script>
 {% endblock %}

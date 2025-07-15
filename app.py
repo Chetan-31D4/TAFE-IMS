@@ -368,18 +368,47 @@ from flask import (
 from werkzeug.security import check_password_hash
 import json
 
-@app.route('/login', methods=['GET', 'POST'])
+from datetime import timedelta
+import os, time
+from werkzeug.security import check_password_hash
+from werkzeug.utils   import secure_filename
+from flask           import (
+    session, request, redirect, url_for, flash
+)
+
+# -- configure your session timeout once at app startup:
+import time
+import os
+from flask import (
+    flash, request, redirect, url_for, session, render_template
+)
+from werkzeug.utils import secure_filename
+from werkzeug.security import check_password_hash
+
+ALLOWED_IMAGE_EXT = {'png', 'jpg', 'jpeg'}
+
+@app.route('/login', methods=['GET','POST'])
 def login():
     if request.method == 'POST':
         username = request.form['username'].strip()
         password = request.form['password']
-        lat = request.form.get('lat')
-        lng = request.form.get('lng')
+        lat      = request.form.get('latitude')
+        lng      = request.form.get('longitude')
+        snap     = request.files.get('snapshot')
+
+        # require geo + camera
+        if not (lat and lng and snap and snap.filename):
+            flash("📍 & 📷 access are required to log in.", "error")
+            return redirect(url_for('login'))
+
+        ext = snap.filename.rsplit('.',1)[-1].lower()
+        if ext not in ALLOWED_IMAGE_EXT:
+            flash("Snapshot must be PNG/JPG.", "error")
+            return redirect(url_for('login'))
 
         conn, cur = get_db_cursor()
-        # only active users
         cur.execute("""
-          SELECT id, username, password, role
+          SELECT id, password, role
             FROM users
            WHERE username = %s
              AND is_active = TRUE
@@ -387,27 +416,69 @@ def login():
         user = cur.fetchone()
 
         if user and check_password_hash(user['password'], password):
-            # successful login
+            # mark attendance & record geo
+            mark_attendance(user['id'])
+            cur.execute(
+              "INSERT INTO user_locations (username, latitude, longitude) VALUES (%s,%s,%s)",
+              (username, lat, lng)
+            )
+
+            # upload snapshot directly to R2
+            timestamp     = int(time.time())
+            safe_fname    = secure_filename(f"{user['id']}_{timestamp}.{ext}")
+            snapshot_key  = f"login_snapshots/{safe_fname}"
+            # rewind the file stream
+            snap.stream.seek(0)
+            r2.upload_fileobj(snap.stream, R2_BUCKET, snapshot_key)
+
+            # record snapshot in DB
+            cur.execute("""
+              INSERT INTO user_login_snapshots
+                (user_id, snapshot_key, captured_at)
+              VALUES (%s, %s, NOW())
+            """, (user['id'], snapshot_key))
+
+            conn.commit()
+            conn.close()
+
+            # start session
             session.permanent   = True
             session['user_id']  = user['id']
-            session['username'] = user['username']
+            session['username'] = username
             session['role']     = user['role']
-
-            # record geo if provided
-            if lat and lng:
-                cur.execute(
-                  "INSERT INTO user_locations(username, latitude, longitude) VALUES(%s,%s,%s)",
-                  (username, lat, lng)
-                )
-                conn.commit()
-
-            conn.close()
             return redirect(url_for('dashboard'))
 
         conn.close()
-        flash("Invalid credentials or account disabled.", "error")
+        flash("Invalid credentials or disabled account.", "error")
+        return redirect(url_for('login'))
 
     return render_template('login.html')
+
+
+
+@app.route('/tasks/cleanup_snapshots')
+def cleanup_snapshots():
+    # you can secure this behind a secret or automations IP check
+    conn, cur = get_db_cursor()
+    # find keys older than 7 days
+    cur.execute("""
+      SELECT snapshot_key
+        FROM login_snapshots
+       WHERE captured_at < now() - INTERVAL '7 days'
+    """)
+    old = [r['snapshot_key'] for r in cur.fetchall()]
+
+    # delete from R2
+    for key in old:
+        r2.delete_object(R2_BUCKET, key)
+
+    # delete DB rows
+    cur.execute("""
+      DELETE FROM login_snapshots
+       WHERE captured_at < now() - INTERVAL '7 days'
+    """)
+    conn.commit(); conn.close()
+    return '',204
 
 
 from functools import wraps
@@ -1793,6 +1864,17 @@ def remove_from_cart(product_id):
     flash("Item removed from cart.", "info")
     return redirect(url_for('view_cart'))
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+import time
+from werkzeug.utils import secure_filename
+from flask import (
+    abort, flash, redirect, render_template,
+    request, session, url_for
+)
+
+ALLOWED_INVOICE_EXT = {'pdf'}
+
 @app.route('/receive_stock', methods=['GET','POST'])
 def receive_stock():
     if session.get('role') != 'admin':
@@ -1801,69 +1883,94 @@ def receive_stock():
     conn, cur = get_db_cursor()
 
     if request.method == 'POST':
-        # 1) grab the uploaded invoice
+        # ── 1) handle invoice upload ─────────────────────────────
         f = request.files.get('invoice')
         if not f or f.filename == '':
             flash("Please upload an invoice PDF.", "error")
+            conn.close()
             return redirect(url_for('receive_stock'))
 
         ext = f.filename.rsplit('.',1)[-1].lower()
         if ext not in ALLOWED_INVOICE_EXT:
             flash("Only PDF invoices are allowed.", "error")
+            conn.close()
             return redirect(url_for('receive_stock'))
 
-        invoice_fn = secure_filename(f.filename)
+        invoice_fn     = secure_filename(f.filename)
         invoice_stored = f"{int(time.time())}_{invoice_fn}"
-        # invoice_path = os.path.join(app.config['UPLOAD_FOLDER'], invoice_stored)
-        # f.save(invoice_path)
-        invoice_key = f"invoices/{invoice_stored}"
-        r2.upload_fileobj(f,R2_BUCKET, invoice_key)
+        invoice_key    = f"invoices/{invoice_stored}"
+        r2.upload_fileobj(f, R2_BUCKET, invoice_key)
 
-        # 2) for each product row in the form:
-        for pid, qty_str in request.form.items():
-            if not pid.startswith('qty_'): continue
-            product_id = int(pid.split('_',1)[1])
+        # ── 2) compute next purchase_id ─────────────────────────
+        cur.execute("SELECT COALESCE(MAX(purchase_id),0) + 1 AS next_batch FROM stock_history")
+        next_batch = cur.fetchone()['next_batch']
+
+        # ── 3) loop through each qty_<id> field and pick up quality_<id> too ───
+        for field, val in request.form.items():
+            if not field.startswith('qty_'):
+                continue
+
+            product_id   = int(field.split('_',1)[1])
             try:
-                received_qty = int(qty_str)
+                received_qty = int(val)
             except ValueError:
                 continue
             if received_qty <= 0:
                 continue
 
             # fetch old quantity
-            cur.execute("SELECT name, quantity FROM products WHERE id = %s", (product_id,))
+            cur.execute("SELECT name, quantity FROM products WHERE id=%s", (product_id,))
             prod = cur.fetchone()
-            if not prod: continue
+            if not prod:
+                continue
 
             old_q = prod['quantity']
             new_q = old_q + received_qty
 
-            # update product
-            cur.execute("UPDATE products SET quantity=%s WHERE id=%s", (new_q, product_id))
+            # 4) update products table
+            cur.execute(
+                "UPDATE products SET quantity=%s WHERE id=%s",
+                (new_q, product_id)
+            )
 
-            # insert into stock_history
-            now = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S")
+            # 5) get the per-row quality (default to genuine)
+            qual = request.form.get(f"quality_{product_id}", "genuine")
+
+            # 6) insert into stock_history with purchase_id & quality
+            now_ts = datetime.now(ZoneInfo("Asia/Kolkata"))
             cur.execute("""
               INSERT INTO stock_history
-                (product_id, product_name, changed_by,
-                 old_quantity, new_quantity, change_amount, changed_at,
-                 invoice_filename, invoice_path)
-              VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (
-              product_id,
-              prod['name'],
-              session['username'],
-              old_q, new_q, received_qty, now,
-              invoice_fn, invoice_key
-            ))
+                (product_id,  product_name, changed_by,
+                 old_quantity, new_quantity, change_amount,
+                 changed_at,   invoice_filename, invoice_path,
+                 purchase_id,  quality)
+              VALUES (
+                %(pid)s, %(name)s, %(user)s,
+                %(old)s, %(new)s, %(amt)s,
+                %(ts)s,  %(invfn)s, %(invpath)s,
+                %(batch)s, %(qual)s
+              )
+            """, {
+                "pid":       product_id,
+                "name":      prod['name'],
+                "user":      session['username'],
+                "old":       old_q,
+                "new":       new_q,
+                "amt":       received_qty,
+                "ts":        now_ts,
+                "invfn":     invoice_fn,
+                "invpath":   invoice_key,
+                "batch":     next_batch,
+                "qual":      qual,
+            })
 
         conn.commit()
         conn.close()
-        flash("Stock received and invoice saved.", "success")
+        flash(f"✅ Received batch #{next_batch} ({next_batch} items).", "success")
         return redirect(url_for('stock_history'))
 
-    # GET: show form
-    cur.execute("SELECT id,name,quantity FROM products ORDER BY name")
+    # GET: render the form with existing products
+    cur.execute("SELECT id, name, quantity FROM products ORDER BY name")
     products = cur.fetchall()
     conn.close()
     return render_template('receive_stock.html', products=products)
@@ -2031,7 +2138,7 @@ from flask import (
     abort, flash, redirect, render_template, request, session, url_for
 )
 
-ALLOWED_TITLES = {'Planned Maintenance', 'Predective Maintenance', 'Full OverAll'}
+ALLOWED_TITLES = {'Planned Maintenance', 'Predective Maintenance', 'Full Overhaul'}
 
 @app.route('/jobs', methods=['GET', 'POST'])
 def jobs():
@@ -2299,6 +2406,8 @@ def complete_job(job_id):
 #     )
 
 
+from flask_mail import Message
+
 @app.route('/update_stock', methods=['GET', 'POST'])
 def update_stock():
     # only admins may adjust
@@ -2321,6 +2430,7 @@ def update_stock():
         return redirect(url_for('update_stock'))
 
     any_removed = False
+    changes = []  # collect for email
     for p in products:
         field = f"remove_{p['id']}"
         try:
@@ -2362,16 +2472,73 @@ def update_stock():
                 remark
             ))
 
+            changes.append(f"{p['name']}: {old_qty}→{new_qty} ({-remove_amt})")
+
     if not any_removed:
         flash("No units were removed.", "warning")
         conn.close()
         return redirect(url_for('update_stock'))
 
     conn.commit()
+
+    # — Send notification email to all active admins —
+    cur.execute("SELECT email FROM users WHERE role='admin' AND is_active=TRUE")
+    admin_emails = [r['email'] for r in cur.fetchall()]
     conn.close()
+
+    if admin_emails:
+        msg = Message(
+            subject="⚠️ Stock Adjustment Notification",
+            recipients=admin_emails,
+        )
+        body_lines = [
+            f"User {session['username']} removed stock at {now}.",
+            "",
+            "Changes:",
+        ]
+        body_lines += [ f"- {c}" for c in changes ]
+        body_lines += ["", f"Remark: {remark}"]
+        msg.body = "\n".join(body_lines)
+        mail.send(msg)
+
     flash("Stock updated successfully.", "success")
     return redirect(url_for('dashboard'))
 
+
+import csv
+from io import StringIO
+from flask import Response
+
+@app.route('/download_current_stock')
+def download_current_stock():
+    if session.get('role') != 'admin':
+        abort(403)
+
+    conn, cur = get_db_cursor()
+    cur.execute("SELECT name, quantity FROM products ORDER BY name")
+    products = cur.fetchall()
+    conn.close()
+
+    # build CSV in-memory
+    si = StringIO()
+    writer = csv.writer(si)
+    # header
+    writer.writerow(['Product', 'Current Quantity'])
+    # rows
+    for p in products:
+        writer.writerow([p['name'], p['quantity']])
+
+    output = si.getvalue()
+    si.close()
+
+    # send as downloadable attachment
+    return Response(
+        output,
+        mimetype='text/csv',
+        headers={
+            'Content-Disposition': 'attachment; filename=current_stock.csv'
+        }
+    )
 
 from werkzeug.security import generate_password_hash
 
@@ -2584,9 +2751,6 @@ def view_user_locations(username):
       max_date=maxd
     )
 
-
-
-
 from flask import request, jsonify
 
 @app.route('/api/location', methods=['POST'])
@@ -2608,6 +2772,171 @@ def save_location():
     conn.commit()
     conn.close()
     return jsonify({"status":"ok"}), 201
+
+def mark_attendance(user_id):
+    """Record today’s attendance for this user (once only)."""
+    conn, cur = get_db_cursor()
+    today = date.today()
+    cur.execute("""
+      INSERT INTO user_attendance(user_id, att_date)
+      VALUES (%s, %s)
+      ON CONFLICT (user_id, att_date) DO NOTHING
+    """, (user_id, today))
+    conn.commit()
+    conn.close()
+
+
+from datetime import date, timedelta, datetime
+from collections import defaultdict
+from flask import (
+    abort, render_template, request, session, url_for, redirect
+)
+
+from datetime import date, datetime, timedelta
+from collections import defaultdict
+from flask import (
+    request, abort, render_template, session
+)
+
+from datetime import date, datetime, timedelta
+from collections import defaultdict
+from flask import (
+    request, abort, render_template, session,
+    url_for
+)
+
+# at the top of your file, so you can see the logs in the console
+import logging
+from datetime import date, datetime, timedelta
+from collections import defaultdict
+from flask import request, abort, render_template, session
+
+# wherever your R2 helper is:
+# from yourapp.storage import s3_signed_url  
+
+from datetime import date, datetime, timedelta
+from collections import defaultdict
+from flask import request, abort, render_template, session
+import logging
+
+from collections import defaultdict
+from datetime import date, datetime, timedelta
+from flask import request, abort, render_template, session, url_for, redirect
+
+@app.route('/attendance_summary')
+@login_required
+def attendance_summary():
+    if session.get('role') != 'admin':
+        abort(403)
+
+    today        = date.today()
+    one_year_ago = today - timedelta(days=365)
+    default_to   = today
+    default_from = today - timedelta(days=6)
+
+    def parse_or_default(key, default):
+        s = request.args.get(key, '')
+        try:
+            return datetime.strptime(s, "%Y-%m-%d").date()
+        except:
+            return default
+
+    start = parse_or_default('start', default_from)
+    end   = parse_or_default('end',   default_to)
+    # clamp into [one_year_ago … today]
+    start = max(start, one_year_ago)
+    end   = min(end,   today)
+    if start > end:
+        start, end = end, start
+
+    dates = [ start + timedelta(days=i) for i in range((end - start).days + 1) ]
+
+    conn, cur = get_db_cursor()
+    # fetch users
+    cur.execute("SELECT id, username FROM users ORDER BY username")
+    users = cur.fetchall()
+
+    # fetch attendance
+    cur.execute("""
+      SELECT user_id, att_date
+        FROM user_attendance
+       WHERE att_date BETWEEN %s AND %s
+    """, (start, end))
+    attendance_rows = cur.fetchall()
+
+    # fetch snapshots
+    cur.execute("""
+      SELECT user_id,
+             DATE(captured_at) AS att_date,
+             snapshot_key
+        FROM user_login_snapshots
+       WHERE DATE(captured_at) BETWEEN %s AND %s
+    """, (start, end))
+    snap_rows = cur.fetchall()
+    conn.close()
+
+    # build maps
+    attendance_map = defaultdict(set)
+    for r in attendance_rows:
+        attendance_map[r['user_id']].add(r['att_date'])
+
+    # *store the raw key* here
+    snapshot_map = defaultdict(dict)
+    for r in snap_rows:
+        snapshot_map[r['user_id']][r['att_date']] = r['snapshot_key']
+
+    return render_template('attendance_summary.html',
+      users          = users,
+      dates          = dates,
+      attendance_map = attendance_map,
+      snapshot_map   = snapshot_map,
+      start_date     = start.isoformat(),
+      end_date       = end.isoformat(),
+      min_date       = one_year_ago.isoformat(),
+      max_date       = today.isoformat(),
+    )
+
+
+
+from datetime import timedelta
+
+@app.route('/attendance/<username>')
+@login_required
+def attendance_detail(username):
+    # only admin OR the user themself
+    if not (session['role']=='admin' or session['username']==username):
+        abort(403)
+
+    # look up user_id
+    conn, cur = get_db_cursor()
+    cur.execute("SELECT id FROM users WHERE username=%s", (username,))
+    u = cur.fetchone() or abort(404)
+    user_id = u['id']
+
+    # fetch all attendance dates in last 365 days
+    today = date.today()
+    start = today - timedelta(days=364)
+    cur.execute("""
+      SELECT att_date
+        FROM user_attendance
+       WHERE user_id=%s
+         AND att_date BETWEEN %s AND %s
+    """, (user_id, start, today))
+    present = { r['att_date'] for r in cur.fetchall() }
+    conn.close()
+
+    # build a list of { date, present? } for each of the 365 days
+    days = []
+    for i in range(365):
+        d = start + timedelta(days=i)
+        days.append({
+          'date': d,
+          'present': (d in present)
+        })
+
+    return render_template('attendance_detail.html',
+                           username=username,
+                           days=days)
 
 
 

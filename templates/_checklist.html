@@ -1,0 +1,35 @@
+{# templates/_checklist.html #}
+<div class="space-y-6">
+  {% for section, items in checklist %}
+  <div>
+    <h3 class="font-semibold text-lg mb-2">{{ section }}</h3>
+    <table class="w-full table-auto text-sm">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="px-3 py-1 text-left">Check</th>
+          <th class="px-2 py-1 text-center">N/A</th>
+          <th class="px-2 py-1 text-center">OK</th>
+          <th class="px-2 py-1 text-center">RR</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-200">
+        {% for item in items %}
+        <tr class="hover:bg-gray-100">
+          <td class="px-3 py-2">{{ item }}</td>
+          {% for code in ['na','ok','rr'] %}
+          <td class="px-2 py-2 text-center">
+            <input
+              type="radio"
+              name="{{ item|replace(' ','_') }}"
+              value="{{ code }}"
+              required
+            />
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+</div>

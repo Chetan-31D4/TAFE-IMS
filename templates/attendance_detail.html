@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-4xl mx-auto py-6">
+  <h2 class="text-2xl font-bold mb-4">
+    📋 Attendance Detail – {{ username }} (last 365 days)
+  </h2>
+
+  <div class="grid grid-cols-7 gap-1">
+    {% for d in days %}
+      <div
+        class="h-8 flex items-center justify-center text-xs font-semibold
+               {% if d.present %}
+                 bg-green-200 hover:bg-green-300
+               {% else %}
+                 bg-red-100 hover:bg-red-200
+               {% endif %}
+               rounded"
+        title="{{ d.date.isoformat() }} — {{ 'Present' if d.present else 'Absent' }}">
+        {% if d.present %}✓{% else %}—{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <p class="mt-4 text-sm text-gray-600">
+    Green = present, red = absent.
+  </p>
+</div>
+{% endblock %}
